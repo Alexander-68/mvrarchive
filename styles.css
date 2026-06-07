@@ -19,6 +19,9 @@
 }
 
 * { box-sizing: border-box; }
+/* The HTML `hidden` attribute must beat class-based display rules (e.g. the
+   viewer overlay sets display:flex, which would otherwise override hidden). */
+[hidden] { display: none !important; }
 
 html, body { height: 100%; }
 body {

@@ -24,6 +24,8 @@
     focus: 0,            // index into visible studies
     current: null,       // study open in detail view
     mediaFocus: 0,       // index into current.media
+    tileSize: 160,       // detail media-tile min width (px), wheel/pinch adjustable
+    pinch: null,         // active pinch gesture in the media grid
     viewer: { media: [], index: 0, url: null, open: false, img: null,
               scale: 1, tx: 0, ty: 0, drag: null, touchX: null },
   };
@@ -292,9 +294,18 @@
     updateMediaFocus();
   }
 
+  function applyTileSize() {
+    $("#media-grid").style.gridTemplateColumns = `repeat(auto-fill, minmax(${state.tileSize}px, 1fr))`;
+  }
+  function zoomTiles(deltaPx) {
+    state.tileSize = Math.max(96, Math.min(440, state.tileSize + deltaPx));
+    applyTileSize();
+  }
+
   function renderMedia(study) {
     const grid = $("#media-grid");
     grid.innerHTML = "";
+    applyTileSize();
     $("#media-empty").hidden = study.media.length > 0;
 
     study.media.forEach((m, idx) => {
@@ -549,6 +560,12 @@
     }
   }
 
+  function pinchDist(touches) {
+    const dx = touches[0].clientX - touches[1].clientX;
+    const dy = touches[0].clientY - touches[1].clientY;
+    return Math.hypot(dx, dy);
+  }
+
   // ---- touch (viewer swipe) -------------------------------------------------
   function onTouchStart(e) {
     if (!state.viewer.open || state.viewer.scale !== 1) return;
@@ -584,6 +601,25 @@
     window.addEventListener("pointerup", onPointerUp);
     stage.addEventListener("touchstart", onTouchStart, { passive: true });
     stage.addEventListener("touchend", onTouchEnd, { passive: true });
+
+    // Study detail: wheel / pinch resizes the preview tiles.
+    const mgrid = $("#media-grid");
+    mgrid.addEventListener("wheel", (e) => {
+      if (state.view !== "study" || state.viewer.open) return;
+      e.preventDefault();
+      zoomTiles(e.deltaY < 0 ? 24 : -24);
+    }, { passive: false });
+    mgrid.addEventListener("touchstart", (e) => {
+      if (state.view !== "study" || e.touches.length !== 2) return;
+      state.pinch = { dist: pinchDist(e.touches), size: state.tileSize };
+    }, { passive: true });
+    mgrid.addEventListener("touchmove", (e) => {
+      if (!state.pinch || e.touches.length !== 2) return;
+      const ratio = pinchDist(e.touches) / state.pinch.dist;
+      state.tileSize = Math.max(96, Math.min(440, Math.round(state.pinch.size * ratio)));
+      applyTileSize();
+    }, { passive: true });
+    mgrid.addEventListener("touchend", () => { state.pinch = null; });
 
     // Re-flow the focus cursor when the grid wraps to a new column count.
     window.addEventListener("resize", () => {

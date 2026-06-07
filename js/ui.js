@@ -27,7 +27,7 @@
     tileSize: 160,       // detail media-tile min width (px), wheel/pinch adjustable
     pinch: null,         // active pinch gesture in the media grid
     viewer: { study: null, media: [], index: 0, url: null, open: false, img: null,
-              scale: 1, tx: 0, ty: 0, drag: null, touch: null },
+              scale: 1, tx: 0, ty: 0, drag: null, touch: null, seq: 0 },
   };
 
   // ---- small DOM helpers ----------------------------------------------------
@@ -273,6 +273,32 @@
   }
 
   // ---- study detail ---------------------------------------------------------
+
+  // The prev/next set is the studies visible after search; if more than one
+  // study is selected, navigation is confined to the selection instead (a
+  // single selection is ignored, so it behaves like "all visible").
+  function studyNavList() {
+    const vis = visibleStudies();
+    const sel = vis.filter((s) => s.marked);
+    return sel.length > 1 ? sel : vis;
+  }
+  function navStudy(dir) {
+    const list = studyNavList();
+    if (!list.length) return;
+    let idx = list.indexOf(state.current);
+    if (idx === -1) idx = dir > 0 ? -1 : list.length; // not in list: enter at an end
+    const ni = idx + dir;
+    if (ni < 0 || ni >= list.length) return;
+    openStudy(list[ni]);
+  }
+  function updateStudyNavButtons() {
+    const list = studyNavList();
+    const idx = list.indexOf(state.current);
+    const inList = idx >= 0;
+    $("#btn-prev-study").disabled = inList ? idx <= 0 : list.length === 0;
+    $("#btn-next-study").disabled = inList ? idx >= list.length - 1 : list.length === 0;
+  }
+
   async function openStudy(study) {
     state.current = study;
     showStudy();
@@ -292,6 +318,7 @@
     renderMedia(study);
     renderInfo(study);
     updateMediaFocus();
+    updateStudyNavButtons();
   }
 
   function applyTileSize() {
@@ -447,14 +474,11 @@
     state.viewer.index = (state.viewer.index + delta + n) % n;
     showMedia();
   }
-  async function showMedia() {
-    clearStage();
-    const m = state.viewer.media[state.viewer.index];
-    const stage = $("#viewer-stage");
+  function viewerLabel(m) {
     const study = state.viewer.study;
     const counter = `(${state.viewer.index + 1}/${state.viewer.media.length})`;
-    // Top label: patient name · folder · file (counter). Patient is dropped when
-    // there is no metadata (it would just repeat the folder name).
+    // patient · folder · file (counter); patient dropped when it would just
+    // repeat the folder name (study with no metadata).
     const parts = [];
     if (study) {
       const patient = S.displayName(study);
@@ -462,11 +486,29 @@
       parts.push(study.folderName);
     }
     parts.push(m.name);
-    $("#viewer-name").textContent = `${parts.join("  ·  ")}  ${counter}`;
+    return `${parts.join("  ·  ")}  ${counter}`;
+  }
+  function loadErr(e, m) {
+    return e && e.message && /not found|too large|413/i.test(e.message)
+      ? `Could not load ${m.name}. Files over 32 MiB can't be read through the current API (a streaming endpoint is planned).`
+      : `Could not load ${m.name}: ${e ? e.message : ""}`;
+  }
+  function decodeImg(img, url) {
+    return new Promise((res, rej) => { img.onload = () => res(); img.onerror = rej; img.src = url; });
+  }
+
+  async function showMedia() {
+    const m = state.viewer.media[state.viewer.index];
+    const stage = $("#viewer-stage");
+    $("#viewer-name").textContent = viewerLabel(m);
     const hasNav = state.viewer.media.length > 1;
     $("#viewer-prev").style.visibility = hasNav ? "" : "hidden";
     $("#viewer-next").style.visibility = hasNav ? "" : "hidden";
 
+    if (m.kind === "image") return showImage(m, stage);
+
+    // Heavy media (video / pdf / dicom): plain replace, no crossfade.
+    clearStage();
     const ext = MVR.path.extname(m.name);
     if (ext === "dcm") {
       stage.appendChild(el("div", "msg", `DICOM files (${m.name}) are not viewable yet — a DICOM decoder is planned for a later phase.`));
@@ -477,14 +519,7 @@
     try {
       const url = (state.viewer.url = await api.objectURL(m.path, m.name));
       loading.remove();
-      if (m.kind === "image") {
-        const img = el("img");
-        img.src = url;
-        img.draggable = false;
-        state.viewer.img = img;
-        stage.appendChild(img);
-        applyZoom();             // carry over zoom/pan from the previous image
-      } else if (m.kind === "video") {
+      if (m.kind === "video") {
         const v = document.createElement("video");
         v.src = url; v.controls = true; v.autoplay = true; v.playsInline = true;
         stage.appendChild(v);
@@ -494,11 +529,49 @@
       }
     } catch (e) {
       loading.remove();
-      const msg = e.message && /not found|too large|413/i.test(e.message)
-        ? `Could not load ${m.name}. Files over 32 MiB can't be read through the current API (a streaming endpoint is planned).`
-        : `Could not load ${m.name}: ${e.message}`;
-      stage.appendChild(el("div", "msg", msg));
+      stage.appendChild(el("div", "msg", loadErr(e, m)));
     }
+  }
+
+  // showImage layers the new image over the previous one and cross-fades, so
+  // stepping through a series looks continuous (no blank stage between frames).
+  // A sequence token guards against out-of-order loads during fast stepping.
+  async function showImage(m, stage) {
+    const seq = ++state.viewer.seq;
+    const oldImg = state.viewer.img;
+    const oldUrl = oldImg ? state.viewer.url : null;
+    let placeholder = null;
+    if (!oldImg) { clearStage(); placeholder = el("div", "msg", "Loading…"); stage.appendChild(placeholder); }
+
+    let url;
+    try {
+      url = await api.objectURL(m.path, m.name);
+    } catch (e) {
+      if (seq === state.viewer.seq) { if (placeholder) placeholder.remove(); stage.appendChild(el("div", "msg", loadErr(e, m))); }
+      return;
+    }
+    if (seq !== state.viewer.seq) { URL.revokeObjectURL(url); return; } // superseded
+
+    const img = document.createElement("img");
+    img.draggable = false;
+    try {
+      await decodeImg(img, url);
+    } catch (e) {
+      URL.revokeObjectURL(url);
+      if (seq === state.viewer.seq) { if (placeholder) placeholder.remove(); stage.appendChild(el("div", "msg", `Could not load ${m.name}`)); }
+      return;
+    }
+    if (seq !== state.viewer.seq) { URL.revokeObjectURL(url); return; }
+
+    if (placeholder) placeholder.remove();
+    img.style.opacity = "0";
+    stage.appendChild(img);
+    state.viewer.img = img;
+    state.viewer.url = url;
+    applyZoom();                                   // carry over zoom/pan
+    requestAnimationFrame(() => { img.style.opacity = "1"; });
+    if (oldImg) { oldImg.style.opacity = "0"; setTimeout(() => oldImg.remove(), 220); }
+    if (oldUrl) URL.revokeObjectURL(oldUrl);
   }
 
   function applyZoom() {
@@ -641,6 +714,8 @@
   async function boot() {
     $("#btn-refresh").onclick = () => loadArchive(state.root);
     $("#btn-back").onclick = showArchive;
+    $("#btn-prev-study").onclick = () => navStudy(-1);
+    $("#btn-next-study").onclick = () => navStudy(1);
     $("#viewer-close").onclick = closeViewer;
     $("#viewer-prev").onclick = () => step(-1);
     $("#viewer-next").onclick = () => step(1);

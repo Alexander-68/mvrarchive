@@ -126,6 +126,7 @@ button.ghost { background: transparent; }
 /* ---- study detail --------------------------------------------------------- */
 .detail-head { display: flex; align-items: center; gap: 1rem; margin-bottom: 1rem; flex-wrap: wrap; }
 .detail-title { margin: 0; font-size: 1.25rem; }
+.detail-nav { margin-left: auto; display: flex; gap: .4rem; }
 .detail-body { display: grid; grid-template-columns: 1fr 320px; gap: 1.5rem; align-items: start; }
 @media (max-width: 820px) { .detail-body { grid-template-columns: 1fr; } }
 
@@ -162,9 +163,14 @@ button.ghost { background: transparent; }
 }
 .viewer-top { display: flex; align-items: center; justify-content: space-between; padding: .6rem 1rem; }
 .viewer-name { color: var(--muted-2); font-size: .9rem; }
-.viewer-stage { flex: 1; display: grid; place-items: center; padding: 0 1rem 1rem; min-height: 0; }
+.viewer-stage { position: relative; flex: 1; display: grid; place-items: center; padding: 0 1rem 1rem; min-height: 0; }
 .viewer-stage img, .viewer-stage video { max-width: 100%; max-height: 100%; object-fit: contain; }
-.viewer-stage img { cursor: zoom-in; will-change: transform; }
+/* Images are absolutely centred so a new one can be layered over the previous
+   one and cross-faded — no blank stage flashes between frames. */
+.viewer-stage img {
+  position: absolute; top: 0; left: 0; right: 0; bottom: 0; margin: auto;
+  cursor: zoom-in; will-change: transform, opacity; transition: opacity .2s ease;
+}
 .viewer-stage img.zoomed { cursor: grab; }
 .viewer-stage img.dragging { cursor: grabbing; }
 .viewer-stage iframe, .viewer-stage embed { width: 90%; height: 100%; border: 0; background: #fff; }

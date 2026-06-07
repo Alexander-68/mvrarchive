@@ -26,8 +26,8 @@
     mediaFocus: 0,       // index into current.media
     tileSize: 160,       // detail media-tile min width (px), wheel/pinch adjustable
     pinch: null,         // active pinch gesture in the media grid
-    viewer: { media: [], index: 0, url: null, open: false, img: null,
-              scale: 1, tx: 0, ty: 0, drag: null, touchX: null },
+    viewer: { study: null, media: [], index: 0, url: null, open: false, img: null,
+              scale: 1, tx: 0, ty: 0, drag: null, touch: null },
   };
 
   // ---- small DOM helpers ----------------------------------------------------
@@ -417,6 +417,7 @@
 
   // ---- media viewer (zoom / pan / swipe) ------------------------------------
   function openViewer(study, index) {
+    state.viewer.study = study;
     state.viewer.media = study.media;
     state.viewer.index = index;
     state.viewer.open = true;
@@ -448,7 +449,18 @@
     clearStage();
     const m = state.viewer.media[state.viewer.index];
     const stage = $("#viewer-stage");
-    $("#viewer-name").textContent = `${m.name}  (${state.viewer.index + 1}/${state.viewer.media.length})`;
+    const study = state.viewer.study;
+    const counter = `(${state.viewer.index + 1}/${state.viewer.media.length})`;
+    // Top label: patient name · folder · file (counter). Patient is dropped when
+    // there is no metadata (it would just repeat the folder name).
+    const parts = [];
+    if (study) {
+      const patient = S.displayName(study);
+      if (patient && patient !== study.folderName) parts.push(patient);
+      parts.push(study.folderName);
+    }
+    parts.push(m.name);
+    $("#viewer-name").textContent = `${parts.join("  ·  ")}  ${counter}`;
     const hasNav = state.viewer.media.length > 1;
     $("#viewer-prev").style.visibility = hasNav ? "" : "hidden";
     $("#viewer-next").style.visibility = hasNav ? "" : "hidden";
@@ -509,6 +521,7 @@
   }
   function onPointerDown(e) {
     const v = state.viewer;
+    if (e.pointerType === "touch") return; // touch handled by touch events below
     if (!v.open || !v.img || v.scale === 1) return;
     v.drag = { x: e.clientX, y: e.clientY, tx: v.tx, ty: v.ty };
     v.img.classList.add("dragging");
@@ -566,17 +579,59 @@
     return Math.hypot(dx, dy);
   }
 
-  // ---- touch (viewer swipe) -------------------------------------------------
-  function onTouchStart(e) {
-    if (!state.viewer.open || state.viewer.scale !== 1) return;
-    if (e.touches.length === 1) state.viewer.touchX = e.touches[0].clientX;
+  // ---- touch (viewer: pinch-zoom, pan, swipe) -------------------------------
+  // One finger: pan when zoomed, else horizontal swipe to change file.
+  // Two fingers: pinch to zoom (anchored on the gesture midpoint).
+  function stageCenterPoint(cx, cy) {
+    const rect = $("#viewer-stage").getBoundingClientRect();
+    return { x: cx - rect.left - rect.width / 2, y: cy - rect.top - rect.height / 2 };
   }
-  function onTouchEnd(e) {
+  function onViewerTouchStart(e) {
     const v = state.viewer;
-    if (!v.open || v.touchX == null) return;
-    const dx = (e.changedTouches[0].clientX) - v.touchX;
-    v.touchX = null;
-    if (Math.abs(dx) > 50 && v.media.length > 1) step(dx < 0 ? 1 : -1);
+    if (!v.open) return;
+    if (e.touches.length === 2 && v.img) {
+      v.touch = { mode: "pinch", dist: pinchDist(e.touches), scale: v.scale, tx: v.tx, ty: v.ty };
+      e.preventDefault();
+    } else if (e.touches.length === 1) {
+      const t = e.touches[0];
+      if (v.img && v.scale > 1) {
+        v.touch = { mode: "pan", x: t.clientX, y: t.clientY, tx: v.tx, ty: v.ty };
+        e.preventDefault();
+      } else {
+        v.touch = { mode: "swipe", x: t.clientX };
+      }
+    }
+  }
+  function onViewerTouchMove(e) {
+    const v = state.viewer;
+    if (!v.touch) return;
+    if (v.touch.mode === "pinch" && e.touches.length === 2) {
+      e.preventDefault();
+      const k = (Math.max(1, Math.min(8, v.touch.scale * (pinchDist(e.touches) / v.touch.dist)))) / v.touch.scale;
+      v.scale = v.touch.scale * k;
+      const mid = stageCenterPoint(...midpointXY(e.touches));
+      if (v.scale <= 1.001) { v.scale = 1; v.tx = 0; v.ty = 0; }
+      else { v.tx = mid.x - k * (mid.x - v.touch.tx); v.ty = mid.y - k * (mid.y - v.touch.ty); }
+      applyZoom();
+    } else if (v.touch.mode === "pan" && e.touches.length === 1) {
+      e.preventDefault();
+      const t = e.touches[0];
+      v.tx = v.touch.tx + (t.clientX - v.touch.x);
+      v.ty = v.touch.ty + (t.clientY - v.touch.y);
+      applyZoom();
+    }
+  }
+  function onViewerTouchEnd(e) {
+    const v = state.viewer;
+    if (!v.touch) return;
+    if (v.touch.mode === "swipe") {
+      const dx = e.changedTouches[0].clientX - v.touch.x;
+      if (Math.abs(dx) > 50 && v.media.length > 1) step(dx < 0 ? 1 : -1);
+    }
+    if (e.touches.length === 0) v.touch = null;
+  }
+  function midpointXY(touches) {
+    return [(touches[0].clientX + touches[1].clientX) / 2, (touches[0].clientY + touches[1].clientY) / 2];
   }
 
   // ---- boot -----------------------------------------------------------------
@@ -599,8 +654,9 @@
     stage.addEventListener("pointerdown", onPointerDown);
     window.addEventListener("pointermove", onPointerMove);
     window.addEventListener("pointerup", onPointerUp);
-    stage.addEventListener("touchstart", onTouchStart, { passive: true });
-    stage.addEventListener("touchend", onTouchEnd, { passive: true });
+    stage.addEventListener("touchstart", onViewerTouchStart, { passive: false });
+    stage.addEventListener("touchmove", onViewerTouchMove, { passive: false });
+    stage.addEventListener("touchend", onViewerTouchEnd, { passive: true });
 
     // Study detail: wheel / pinch resizes the preview tiles.
     const mgrid = $("#media-grid");

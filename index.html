@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MVRarchive</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">🩺 <strong>MVRarchive</strong> <span class="tag">OmniGate app</span></div>
+    <form class="logout" method="post" action="/__logout">
+      <button type="submit" class="ghost">Sign out</button>
+    </form>
+  </header>
+
+  <main class="content">
+    <section class="hello">
+      <h1>Hello 👋</h1>
+      <p class="muted">MVRarchive web app — connectivity check.</p>
+    </section>
+
+    <section class="card">
+      <div class="card-head">
+        <h2>OmniGate API check</h2>
+        <span id="overall" class="badge pending">checking…</span>
+      </div>
+      <ul id="checks" class="checks">
+        <li data-check="roots"><span class="dot"></span><span class="label">GET /api/roots</span><span class="result">…</span></li>
+        <li data-check="files"><span class="dot"></span><span class="label">GET /api/files</span><span class="result">…</span></li>
+      </ul>
+      <pre id="detail" class="detail" hidden></pre>
+      <button id="btn-retry" class="primary">Re-run checks</button>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

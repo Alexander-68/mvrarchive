@@ -421,6 +421,7 @@
     state.viewer.media = study.media;
     state.viewer.index = index;
     state.viewer.open = true;
+    resetZoomVars();           // fresh open starts unzoomed
     $("#viewer").hidden = false;
     showMedia();
   }
@@ -431,10 +432,11 @@
     // keep detail focus in sync with where we were
     setMediaFocus(state.viewer.index);
   }
+  // clearStage tears down the current media but preserves zoom/pan, so stepping
+  // between images keeps the same magnification and position.
   function clearStage() {
     if (state.viewer.url) { URL.revokeObjectURL(state.viewer.url); state.viewer.url = null; }
     state.viewer.img = null;
-    resetZoomVars();
     $("#viewer-stage").innerHTML = "";
   }
   function resetZoomVars() {
@@ -481,6 +483,7 @@
         img.draggable = false;
         state.viewer.img = img;
         stage.appendChild(img);
+        applyZoom();             // carry over zoom/pan from the previous image
       } else if (m.kind === "video") {
         const v = document.createElement("video");
         v.src = url; v.controls = true; v.autoplay = true; v.playsInline = true;

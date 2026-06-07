@@ -2,7 +2,14 @@
 
 **For:** OmniGate (`C:\Alex\omnigate`) — to be implemented in a separate session.
 **Requested by:** MVRarchive, to play recorded videos.
-**Status:** proposal.
+**Status:** ✅ SATISFIED (2026-06-08). Instead of a separate `stream` route,
+`GET /api/files/read` itself was upgraded to stream with the correct
+`Content-Type` and honour HTTP `Range` (verified: `206` + `Content-Range`,
+`Accept-Ranges: bytes`). A new `GET /api/files/thumbnail?path=&w=` was also added
+for image thumbnails. MVRarchive now points media elements straight at the read
+URL and uses the thumbnail endpoint. The design notes below are retained for
+reference. (Possible future follow-up: server-side **video** thumbnails — today
+video posters are captured client-side.)
 
 ## Problem
 

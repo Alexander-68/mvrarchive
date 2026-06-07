@@ -79,19 +79,28 @@ A visible **focus cursor** (blue outline) marks the current item.
 - **Zoom & pan persist when switching images** — stepping through a series keeps
   the same magnification and position (useful for comparing the same region).
   Zoom resets only on a fresh open of the viewer or when Enter (re-fit) is pressed.
-- **Smooth transitions:** when changing image, the previous frame stays visible
-  while the next loads, then cross-fades in on top — no blank/dark flash between
-  frames, like a movie.
-- Video and PDF play in the viewer. DICOM (`.dcm`) is not viewable yet (decoder
-  planned). Files over 32 MiB can't load through the current API — a streaming
-  endpoint is proposed (`omnigate-streaming-endpoint.md`).
+- **Fast transitions:** when changing image, the next frame is decoded off-DOM
+  and swapped in over the current one **instantly** — no blank/dark flash and no
+  fade animation. Everything should feel immediate.
+- Video and PDF play in the viewer (video streams with HTTP Range, so seeking
+  works). DICOM (`.dcm`) is not viewable yet (decoder planned).
+
+## Thumbnails & media loading
+
+- Archive cards and detail tiles use server thumbnails:
+  `GET /api/files/thumbnail?path=&w=` (JPEG, images only). **Video** previews are
+  captured in-browser — a hidden `<video>` points at the read URL (ranged), seeks
+  ~1s in, and draws a frame to a `<canvas>`. PDF tiles show an icon.
+- The viewer loads full-resolution media by pointing `<img>`/`<video>`/`<iframe>`
+  **directly** at `/api/files/read?path=…` (same-origin, cookie-authenticated) —
+  no blob fetching. This is why video streams and seeks natively.
 
 ## Platform notes / constraints
 
-- The file `read` endpoint always returns `application/octet-stream`; the client
-  re-types blobs by file extension so images/video render.
-- `read` has **no HTTP Range** and a **32 MiB cap** — fine for images/PDFs, blocks
-  large video. Streaming endpoint proposal addresses this.
+- `read` streams with the correct `Content-Type` (by extension) and honours HTTP
+  `Range` (`206` partial responses). The earlier 32 MiB cap / no-Range limitation
+  is gone — large video plays and seeks. (The streaming-endpoint proposal is
+  effectively satisfied by `read` itself.)
 - The app uses **classic scripts** (a `window.MVR` namespace), not ES modules, to
   avoid Windows MIME-registry issues with `http.FileServer` serving `.js`.
 

@@ -51,6 +51,12 @@
 
   const q = (path) => `?path=${encodeURIComponent(path)}`;
 
+  // Same-origin, cookie-authenticated URLs that can be used directly as the
+  // src of <img>/<video>/<iframe>. read streams and honours HTTP Range (so
+  // <video> seeks natively); thumbnail returns a small JPEG for images.
+  function fileURL(path) { return "/api/files/read" + q(path); }
+  function thumbURL(path, w) { return "/api/files/thumbnail" + q(path) + (w ? `&w=${w}` : ""); }
+
   async function roots() {
     const d = await reqJSON("GET", "/api/roots");
     return d.roots || [];
@@ -98,5 +104,5 @@
     return reqJSON("DELETE", "/api/files/delete" + q(path));
   }
 
-  MVR.api = { roots, list, readText, readBlob, objectURL, writeText, mkdir, del, mimeFor };
+  MVR.api = { roots, list, readText, readBlob, objectURL, fileURL, thumbURL, writeText, mkdir, del, mimeFor };
 })();

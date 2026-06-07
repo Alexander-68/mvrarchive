@@ -29,7 +29,8 @@ Endpoints available to an app (all same-origin, user-level):
 |--------|------|---------|
 | `GET` | `/api/roots` | List the allowed directory roots |
 | `GET` | `/api/files?path=` | List a directory |
-| `GET` | `/api/files/read?path=` | Read a file |
+| `GET` | `/api/files/read?path=` | Read a file (streams; honours `Range`) |
+| `GET` | `/api/files/thumbnail?path=&w=` | JPEG thumbnail of an image (`w` defaults to 320) |
 | `PUT` | `/api/files/write?path=` | Write/create a file (raw body) |
 | `POST` | `/api/files/mkdir?path=` | Create a folder |
 | `DELETE` | `/api/files/delete?path=` | Delete a file or folder (recursive) |
@@ -37,6 +38,12 @@ Endpoints available to an app (all same-origin, user-level):
 
 All file paths must fall inside a configured `--allow-dir`; anything outside is
 rejected by the jail.
+
+The `thumbnail` endpoint covers **images** only. For **video** previews, capture
+a frame in the browser: point a hidden `<video>` at `/api/files/read?path=…`
+(which supports HTTP Range, so only the needed bytes are fetched), seek a second
+in, and draw it onto a `<canvas>` — no server-side codec is involved. See
+`captureVideoFrame` in [`xplore/app.js`](xplore/app.js) for a working example.
 
 ## Building a bundle
 

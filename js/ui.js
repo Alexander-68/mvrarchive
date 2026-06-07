@@ -20,13 +20,12 @@
     root: "",
     studies: [],         // current root's studies (sorted newest-first)
     query: "",
-    urls: [],            // object URLs to revoke on archive reload
     focus: 0,            // index into visible studies
     current: null,       // study open in detail view
     mediaFocus: 0,       // index into current.media
     tileSize: 160,       // detail media-tile min width (px), wheel/pinch adjustable
     pinch: null,         // active pinch gesture in the media grid
-    viewer: { study: null, media: [], index: 0, url: null, open: false, img: null,
+    viewer: { study: null, media: [], index: 0, open: false, img: null,
               scale: 1, tx: 0, ty: 0, drag: null, touch: null, seq: 0 },
   };
 
@@ -43,8 +42,30 @@
     img.alt = "";
     return img;
   }
-  function trackURL(u) { state.urls.push(u); return u; }
-  function revokeURLs() { state.urls.forEach(URL.revokeObjectURL); state.urls = []; }
+  // captureVideoFrame grabs a poster frame from a video by streaming just enough
+  // of it (read honours Range), seeking ~1s in, and drawing to a canvas. The
+  // thumbnail endpoint is images-only, so this is how video tiles get a preview.
+  // Resolves to a data URL, or null if anything fails.
+  function captureVideoFrame(url, w) {
+    return new Promise((resolve) => {
+      const v = document.createElement("video");
+      v.muted = true; v.preload = "metadata"; v.src = url;
+      let settled = false;
+      const finish = (val) => { if (settled) return; settled = true; v.removeAttribute("src"); resolve(val); };
+      v.onloadeddata = () => { try { v.currentTime = Math.min(1, (v.duration || 2) / 2); } catch (e) { finish(null); } };
+      v.onseeked = () => {
+        try {
+          if (!v.videoWidth) return finish(null);
+          const cw = w || 400, ch = Math.round(cw * (v.videoHeight / v.videoWidth));
+          const c = document.createElement("canvas"); c.width = cw; c.height = ch;
+          c.getContext("2d").drawImage(v, 0, 0, cw, ch);
+          finish(c.toDataURL("image/jpeg", 0.8));
+        } catch (e) { finish(null); }
+      };
+      v.onerror = () => finish(null);
+      setTimeout(() => finish(null), 8000);
+    });
+  }
 
   let toastTimer = null;
   function toast(msg, isError) {
@@ -89,7 +110,6 @@
   // ---- archive grid ---------------------------------------------------------
   async function loadArchive(root) {
     state.root = root;
-    revokeURLs();
     showArchive();
     const grid = $("#grid");
     grid.innerHTML = "";
@@ -185,19 +205,27 @@
     const dob = S.formatDOB(i);
     if (dob) sub.appendChild(subItem("ic_birthday", dob));
 
-    // Thumbnail: first image only; nothing is drawn over it.
+    // Thumbnail: server JPEG of the first image; if the study has only video,
+    // capture a poster frame. Nothing is drawn over it.
     const thumb = card.querySelector(".card-thumb");
+    const setThumb = (src) => {
+      const img = el("img", "thumb-img");
+      img.src = src;
+      img.onload = () => { thumb.classList.remove("loading"); thumb.appendChild(img); };
+      img.onerror = () => { thumb.classList.remove("loading"); addPlaceholder(thumb); };
+    };
     if (study.thumbFile) {
-      api.objectURL(study.thumbFile.path, study.thumbFile.name).then((url) => {
-        trackURL(url);
-        const img = el("img", "thumb-img");
-        img.src = url;
-        thumb.classList.remove("loading");
-        thumb.appendChild(img);
-      }).catch(() => { thumb.classList.remove("loading"); addPlaceholder(thumb); });
+      setThumb(api.thumbURL(study.thumbFile.path, 400));
     } else {
-      thumb.classList.remove("loading");
-      addPlaceholder(thumb);
+      const vid = study.media.find((m) => m.kind === "video");
+      if (vid) {
+        captureVideoFrame(api.fileURL(vid.path), 400).then((data) => {
+          if (data) setThumb(data); else { thumb.classList.remove("loading"); addPlaceholder(thumb); }
+        });
+      } else {
+        thumb.classList.remove("loading");
+        addPlaceholder(thumb);
+      }
     }
   }
 
@@ -340,18 +368,17 @@
       m.tileEl = tile;
       // Single compact caption, e.g. "IMAGE, I0002.jpg".
       tile.appendChild(el("span", "cap", `${m.kind.toUpperCase()}, ${m.name}`));
+      const ic = icon(m.kind === "video" ? "ic_video" : m.kind === "pdf" ? "ic_pdf" : "ic_image", "ic");
+      tile.appendChild(ic);
+      const setTilePreview = (src) => {
+        const img = el("img");
+        img.src = src;
+        img.onload = () => { tile.insertBefore(img, tile.firstChild); ic.remove(); };
+      };
       if (m.kind === "image") {
-        const ic = icon("ic_image", "ic");
-        tile.appendChild(ic);
-        api.objectURL(m.path, m.name).then((url) => {
-          trackURL(url);
-          const img = el("img");
-          img.src = url;
-          tile.insertBefore(img, tile.firstChild);
-          ic.remove();
-        }).catch(() => {});
-      } else {
-        tile.appendChild(icon(m.kind === "video" ? "ic_video" : "ic_pdf", "ic"));
+        setTilePreview(api.thumbURL(m.path, 400));
+      } else if (m.kind === "video") {
+        captureVideoFrame(api.fileURL(m.path), 400).then((data) => { if (data) setTilePreview(data); });
       }
       tile.onclick = () => { setMediaFocus(idx); openViewer(study, idx); };
       grid.appendChild(tile);
@@ -462,7 +489,6 @@
   // clearStage tears down the current media but preserves zoom/pan, so stepping
   // between images keeps the same magnification and position.
   function clearStage() {
-    if (state.viewer.url) { URL.revokeObjectURL(state.viewer.url); state.viewer.url = null; }
     state.viewer.img = null;
     $("#viewer-stage").innerHTML = "";
   }
@@ -488,11 +514,6 @@
     parts.push(m.name);
     return `${parts.join("  ·  ")}  ${counter}`;
   }
-  function loadErr(e, m) {
-    return e && e.message && /not found|too large|413/i.test(e.message)
-      ? `Could not load ${m.name}. Files over 32 MiB can't be read through the current API (a streaming endpoint is planned).`
-      : `Could not load ${m.name}: ${e ? e.message : ""}`;
-  }
   function decodeImg(img, url) {
     return new Promise((res, rej) => { img.onload = () => res(); img.onerror = rej; img.src = url; });
   }
@@ -507,71 +528,48 @@
 
     if (m.kind === "image") return showImage(m, stage);
 
-    // Heavy media (video / pdf / dicom): plain replace, no crossfade.
+    // Heavy media: stream straight from the read URL (Range-capable), so video
+    // seeks natively and PDFs render with their real content-type.
     clearStage();
     const ext = MVR.path.extname(m.name);
     if (ext === "dcm") {
       stage.appendChild(el("div", "msg", `DICOM files (${m.name}) are not viewable yet — a DICOM decoder is planned for a later phase.`));
       return;
     }
-    const loading = el("div", "msg", "Loading…");
-    stage.appendChild(loading);
-    try {
-      const url = (state.viewer.url = await api.objectURL(m.path, m.name));
-      loading.remove();
-      if (m.kind === "video") {
-        const v = document.createElement("video");
-        v.src = url; v.controls = true; v.autoplay = true; v.playsInline = true;
-        stage.appendChild(v);
-      } else if (m.kind === "pdf") {
-        const f = document.createElement("iframe");
-        f.src = url; stage.appendChild(f);
-      }
-    } catch (e) {
-      loading.remove();
-      stage.appendChild(el("div", "msg", loadErr(e, m)));
+    if (m.kind === "video") {
+      const v = document.createElement("video");
+      v.src = api.fileURL(m.path); v.controls = true; v.autoplay = true; v.playsInline = true;
+      stage.appendChild(v);
+    } else if (m.kind === "pdf") {
+      const f = document.createElement("iframe");
+      f.src = api.fileURL(m.path); stage.appendChild(f);
     }
   }
 
-  // showImage layers the new image over the previous one and cross-fades, so
-  // stepping through a series looks continuous (no blank stage between frames).
-  // A sequence token guards against out-of-order loads during fast stepping.
+  // showImage decodes the next image off-DOM, then swaps it in over the current
+  // one instantly (no blank stage, no fade). A sequence token guards against
+  // out-of-order loads during fast stepping; zoom/pan carry over.
   async function showImage(m, stage) {
     const seq = ++state.viewer.seq;
     const oldImg = state.viewer.img;
-    const oldUrl = oldImg ? state.viewer.url : null;
     let placeholder = null;
     if (!oldImg) { clearStage(); placeholder = el("div", "msg", "Loading…"); stage.appendChild(placeholder); }
-
-    let url;
-    try {
-      url = await api.objectURL(m.path, m.name);
-    } catch (e) {
-      if (seq === state.viewer.seq) { if (placeholder) placeholder.remove(); stage.appendChild(el("div", "msg", loadErr(e, m))); }
-      return;
-    }
-    if (seq !== state.viewer.seq) { URL.revokeObjectURL(url); return; } // superseded
 
     const img = document.createElement("img");
     img.draggable = false;
     try {
-      await decodeImg(img, url);
+      await decodeImg(img, api.fileURL(m.path));
     } catch (e) {
-      URL.revokeObjectURL(url);
       if (seq === state.viewer.seq) { if (placeholder) placeholder.remove(); stage.appendChild(el("div", "msg", `Could not load ${m.name}`)); }
       return;
     }
-    if (seq !== state.viewer.seq) { URL.revokeObjectURL(url); return; }
+    if (seq !== state.viewer.seq) return; // superseded by a newer step
 
     if (placeholder) placeholder.remove();
-    img.style.opacity = "0";
     stage.appendChild(img);
     state.viewer.img = img;
-    state.viewer.url = url;
-    applyZoom();                                   // carry over zoom/pan
-    requestAnimationFrame(() => { img.style.opacity = "1"; });
-    if (oldImg) { oldImg.style.opacity = "0"; setTimeout(() => oldImg.remove(), 220); }
-    if (oldUrl) URL.revokeObjectURL(oldUrl);
+    applyZoom();                  // carry over zoom/pan
+    if (oldImg) oldImg.remove();  // instant swap
   }
 
   function applyZoom() {

@@ -5,40 +5,48 @@ app hosted by **OmniGate**. The app browses recorded imaging *Studies* (folders
 in the MVR Archive standard) on a NAS/local storage, reachable only through
 OmniGate's user-level file API.
 
-> Status: planning. The repository currently contains a deployed connectivity
-> smoke-test (`index.html` / `app.js` / `styles.css`) confirming the OmniGate
-> API is reachable on `http://127.0.0.1:9090/`.
+> **Status (2026-06-08): Phase 1 complete and deployed** on
+> `http://127.0.0.1:9090/` — browse, search, and view (images, video, PDF) all
+> work against sample data. See `HOW_IT_SHOULD_WORK.md` for the agreed UX details.
+> Next milestone: Phase 2 (edit / copy / delete). Real archive data pending.
 
 ---
 
 ## 1. Constraints & platform model
 
-**Pure static web code.** No server-side code. Bundle is a directory of
-HTML/CSS/JS with `index.html` at the root. Deploy = copy the web files into
+**Pure static web code.** No server-side code of our own. Bundle is a directory
+of HTML/CSS/JS with `index.html` at the root. Deploy = copy the web files into
 `C:\Alex\omnigate\data\apps\mvrarchive`; OmniGate serves them live from disk
 (`http.FileServer`), gated behind a per-app login on port **9090**.
 
-**All file access is same-origin through OmniGate**, user-role only. The full
-API surface available to the app:
+**All file access is same-origin through OmniGate**, user-role only. The API
+surface available to the app:
 
 | Method | Path | Use in MVRarchive |
 |--------|------|-------------------|
 | `GET` | `/api/roots` | Discover allowed storage roots (Internal / USB / Network) |
 | `GET` | `/api/files?path=` | List a directory → Study folders, Study contents |
-| `GET` | `/api/files/read?path=` | Read `study_info.yaml`, images, videos, PDFs |
+| `GET` | `/api/files/read?path=` | Read/stream files — **correct Content-Type, honours HTTP `Range`** |
+| `GET` | `/api/files/thumbnail?path=&w=` | JPEG thumbnail of an **image** (`w` default 320) |
 | `PUT` | `/api/files/write?path=` | Save edited Study info, annotations, reports |
 | `POST` | `/api/files/mkdir?path=` | Create folders (copy/export targets) |
 | `DELETE` | `/api/files/delete?path=` | Delete a Study or file (recursive) |
 | `POST` | `/__logout` | End session |
 
-**Implications / hard limits to design around:**
-- No server-side thumbnailing, transcoding, DICOM toolkit, or PACS networking.
-  Anything the Android app did with native libraries must be done in-browser
-  (Canvas/WebCodecs/WASM) or be dropped/deferred.
-- `read` returns the **whole file**. Confirm whether it honors HTTP `Range`
-  before relying on video seeking; if not, large-video playback needs a
-  fallback (full download to a Blob URL). **(Open question Q1.)**
-- No file API for partial writes — saves rewrite a whole file.
+OmniGate is also our project (`C:\Alex\omnigate`, Go), so endpoints can be
+added/extended when justified — propose them, implement in a separate session.
+
+**Implications / things to design around:**
+- `read` streams with `Range` and the right content-type, so `<img>`/`<video>`/
+  `<iframe>` can point **directly** at the read URL — video streams and seeks
+  natively, PDFs render. No blob fetching needed. *(Resolves former Q1.)*
+- **Thumbnails** are server-side for images. **Video** posters are not (the
+  endpoint is images-only); they're captured in-browser (hidden `<video>` seeks
+  ~1 s in, drawn to `<canvas>`). A server-side video thumbnail is a possible
+  future OmniGate addition.
+- No DICOM toolkit or PACS networking server-side; anything the Android app did
+  with native libs must be done in-browser (Canvas/WASM) or deferred.
+- No partial writes — `write` rewrites a whole file.
 - The jail rejects any path outside an `--allow-dir` root; all paths must be
   built from a root returned by `/api/roots`.
 
@@ -75,10 +83,10 @@ Media are sequence-numbered, 4-digit zero-padded per prefix (`I0001`, `V0002`).
   `ReferringPhysician`, `PerformingPhysician`, `ScheduledModality`,
   `StudyInstanceUID`, `AnatomicRegion {display, code}`, … (~50 keys total)
 
-> The web app should **read** the whole map, **display** the well-known fields,
-> and **round-trip unknown keys untouched** on save so it never loses data. When
-> saving, write both `study_info.yaml` and `patient_info.json` to match the
-> Android app's dual-write contract.
+> The app **reads** the whole map, **displays** the well-known fields grouped
+> Patient / Study / Clinical-DICOM (plus an "Additional" group for the rest), and
+> must **round-trip unknown keys untouched** on save. When saving (Phase 2), write
+> both `study_info.yaml` and `patient_info.json` to match the Android dual-write.
 
 ---
 
@@ -89,7 +97,7 @@ Dark theme, bright-blue accent. Values lifted from `compose/LcColors.kt` /
 
 | Token | Hex | Role |
 |-------|-----|------|
-| accent | `#42a8d8` | primary interactive / borders on active |
+| accent | `#42a8d8` | primary interactive / focus cursor / active border |
 | background | `#101010`–`#1a1a1a` | app & card background |
 | surface | `#202020` / `#272727` | raised card / toolbar |
 | line | `#404040` (grey25) | inactive border / divider |
@@ -97,138 +105,136 @@ Dark theme, bright-blue accent. Values lifted from `compose/LcColors.kt` /
 | text-muted | `#b2b2b2` / `#c0c0c0` | secondary text, dates |
 | success | `#3f8f42` | uploaded/export OK |
 | error | `#c00000` | errors |
-| checkmark | `#FFC107` | multi-select mark |
+| checkmark | `#ffc107` | multi-select mark |
 | focus / press | `#193f51` / `#21546c` | focus & press states |
 
-- Corner radius **8dp**, card border **~6px**, system font stack, high-contrast
-  white-on-dark.
-- **Study card** contents (mirror Android `StudyItem`): study icon + title/date,
-  thumbnail (first image, ~408×240), image-count + video-count + total size with
-  `ic_image`/`ic_video` icons, patient name, DOB + Patient ID rows, and an
-  export-status badge (scheduled / uploaded / error).
-- Reuse the Android icon set where useful: `ic_study(_human/_veterinary)`,
-  `ic_image`, `ic_video`, `ic_pdf`, `ic_search`, `ic_but_copy`, `ic_but_report`,
-  `ic_delete`, `ic_birthday`, `ic_id`, `checkmark`. Export as PNG/SVG from
-  `res/drawable*` into an `assets/icons/` folder in the bundle.
-- The Android UI is a 3D horizontal carousel; the web port should use a simpler,
-  responsive **grid/list of cards** (more natural for PC browsing + scroll +
-  search, which the blueprint calls out as the core interaction).
+- Corner radius **8px**, system font stack, high-contrast white-on-dark.
+- **Study card:** thumbnail (first image, or video poster); below it the patient/
+  animal name, date, counts (image/video/pdf) + total size, Study ID, DOB.
+  **Nothing is drawn over the thumbnail** (no type pill / badge).
+- Icons are simple inline SVGs in `assets/icons/` (`ic_study`, `ic_image`,
+  `ic_video`, `ic_pdf`, `ic_search`, `ic_id`, `ic_birthday`).
+- The Android UI is a 3D horizontal carousel; the web port uses a responsive
+  **grid of cards** (better for PC browsing + scroll + search, the blueprint's
+  core interaction).
 
 ---
 
-## 4. Architecture of the web app
+## 4. Architecture of the web app (as built)
 
-Dependency-light, no build step (keeps "copy to deploy" trivial):
+Dependency-light, **no build step** (keeps "copy to deploy" trivial), **no
+external libraries**, **no CDN**:
 
 ```
 mvrarchive/
-├── index.html
+├── index.html                 # shell: topbar, archive grid, detail, viewer overlay
 ├── styles.css                 # theme tokens + components
-├── assets/icons/*.svg
-├── js/
-│   ├── api.js                 # thin wrapper over the OmniGate file API
-│   ├── path.js                # POSIX/Windows path join/parent/sep helpers
-│   ├── study.js               # Study model: parse folder, load study_info, counts
-│   ├── studyinfo.js           # YAML field map <-> display model, dual-write
-│   ├── views/
-│   │   ├── archive.js         # Study grid, search, sort, multi-select
-│   │   ├── study.js           # Study detail: media grid, info panel
-│   │   ├── imageView.js       # image viewer + zoom/pan (+ annotate, phase 3)
-│   │   ├── videoView.js       # video player
-│   │   └── report.js          # report builder (phase 3)
-│   └── app.js                 # router/boot
-└── vendor/
-    └── js-yaml.min.js         # vendored YAML parser/dumper (static, no CDN)
+├── assets/icons/*.svg         # inline line icons
+└── js/                        # classic scripts, loaded in order; window.MVR namespace
+    ├── yaml.js                # MVR.yaml — minimal parse/dump for study_info.yaml
+    ├── path.js                # MVR.path — POSIX/Windows join/parent/sep/ext
+    ├── api.js                 # MVR.api — file API wrapper + read/thumbnail URL helpers
+    ├── study.js               # MVR.study — folder detection, media classify, hydrate,
+    │                          #   search, display + field-group helpers
+    └── ui.js                  # controller: archive grid, detail, viewer, navigation
 ```
 
-- **Vanilla ES modules**, no framework, matching the existing demo style. (A
-  framework is optional and not required for the feature set; revisit only if
-  the view layer grows unwieldy.)
-- **YAML in-browser:** vendor `js-yaml` as a static file (parse + dump). Preserve
-  unknown keys by serializing the full object.
-- **Binary media:** `fetch('/api/files/read?path=…')` → `res.blob()` →
-  `URL.createObjectURL` for `<img>` / `<video>`. Revoke object URLs on
-  navigation to avoid leaks.
-- **Listing performance:** the Android app lazy-loads metadata with a worker
-  pool (4 local / 12 network). Mirror with a bounded-concurrency queue: render
-  Study cards immediately from the directory listing, then hydrate
-  `study_info.yaml`, counts, and thumbnails progressively.
+- **Classic scripts, not ES modules.** Go's `http.FileServer` on Windows derives
+  `.js` MIME from the registry, which can break `type="module"` loading. Each file
+  attaches to a global `window.MVR`; load order in `index.html` sets dependencies.
+- **YAML in-browser:** our own `MVR.yaml` (small, tailored to the schema), with
+  `patient_info.json` as a robust parse fallback. Unknown keys preserved by
+  serializing the full object.
+- **Media loading:** thumbnails via `/api/files/thumbnail`; full-res via
+  `/api/files/read` set **directly** as element `src` (same-origin, cookie auth)
+  — no blobs, no object-URL lifecycle. Video posters captured via `<canvas>`.
+- **Listing performance:** the grid paints immediately from the directory listing,
+  then a bounded-concurrency pool (4 at a time) hydrates each card's
+  `study_info.yaml`, counts, and thumbnail — mirroring the Android worker pool.
 
 ---
 
 ## 5. Feature roadmap
 
 Functions confirmed from the Android Archive (`ArchiveFragment.kt`,
-`CoreBaseFragment.kt`, `ReviewFragment.kt`, `ReportFragment.kt`). Phased by value
-vs. how much each fights the static-only platform.
+`CoreBaseFragment.kt`, `ReviewFragment.kt`, `ReportFragment.kt`).
 
 ### Phase 0 — done
 - [x] Static app deployed to OmniGate on port 9090, behind login.
-- [x] API reachability check (`/api/roots`, `/api/files`).
+- [x] API reachability check.
 
-### Phase 1 — Browse & search (MVP, the blueprint's core)
-- Root/storage selector from `/api/roots`.
-- List Study folders (filter by `isMvrStudyFolder` naming), **sort newest-first**.
-- Study card with metadata, counts, first-image thumbnail, export badge.
-- **Search/filter** by folder name, Study ID, date, patient first/last name,
-  accession (incremental, client-side — mirrors `StudyInfo.filter`).
-- Open a Study → detail view: media grid (images/videos/PDFs) + info panel.
-- Full-size image viewer with zoom/pan; video playback; PDF view (browser native
-  or `pdf.js` if needed).
+### Phase 1 — Browse, search & view — **done**
+- [x] Storage-root selector from `/api/roots`.
+- [x] List Study folders (`CASE####` / timestamp naming), **sort newest-first**,
+  progressive hydration.
+- [x] Study cards: thumbnail (image or video poster), name, date, counts + size,
+  Study ID, DOB. Nothing drawn over the thumbnail.
+- [x] Incremental client-side **search** (folder, Study ID, patient name,
+  accession, date).
+- [x] **Navigation model** with a focus cursor: arrows move, Enter = in, Esc =
+  out/back, Space = select; mouse (click, wheel), touch (tap, pinch, swipe). No
+  on-screen help.
+- [x] Study **detail**: media grid (compact `KIND, file` captions), wheel/pinch
+  tile resize, info panel grouped Patient/Study/Clinical-DICOM (+Additional),
+  and **‹ Prev / Next ›** study buttons scoped to the post-search visible set
+  (or the selection when >1 is selected).
+- [x] **Viewer**: images, video (streams + seeks), PDF. Wheel/pinch zoom toward
+  cursor, drag/touch pan, swipe + arrows to change file. Zoom/pan **persist**
+  across image switches; **instant** image swap (no blank, no fade).
 
-### Phase 2 — Study management
+### Phase 2 — Study management — **next**
 - **Edit Study info** form (well-known fields) → dual-write `study_info.yaml` +
-  `patient_info.json`, preserving unknown keys.
-- **Copy Study** to another root (mkdir + per-file read→write copy, with
+  `patient_info.json`, preserving unknown keys (read-before-write guard).
+- **Copy Study** to another root (`mkdir` + per-file read→write copy, with
   progress). Timestamp-suffix on name collision.
 - **Delete** Study / file (confirm dialog with counts) via `DELETE`.
-- Multi-select (mark) + bulk copy/delete.
+- Bulk actions over the current multi-select.
 
 ### Phase 3 — Authoring (heavier, in-browser)
-- **Image annotation** (line/rect/circle/arrow + notes) on Canvas; save
-  annotated copy and/or sidecar notes via `PUT`.
-- **Report builder**: pick images, choose layout/paper, render to PDF in-browser
+- **Image annotation** (line/rect/circle/arrow + notes) on Canvas; save annotated
+  copy and/or sidecar notes via `PUT`.
+- **Report builder**: pick images, choose layout/paper, render PDF in-browser
   (`jspdf` or `pdf-lib`, vendored) → write `R####.pdf` into the Study folder.
 
 ### Phase 4 — Stretch / platform-limited (needs decisions)
-- **Send to PACS (DICOM C-STORE):** PACS networking + DICOM encoding are not
-  possible from a sandboxed browser with only a file API. Options: (a) drop;
-  (b) "export to a watched NAS folder" that a separate OmniGate-side service
-  uploads; (c) request a new OmniGate endpoint. **(Open question Q2.)**
+- **Send to PACS (DICOM C-STORE):** not possible from a sandboxed browser with a
+  file API only. Options: drop / "export to a watched NAS folder" handled by an
+  OmniGate-side service / a new OmniGate endpoint. **(Q2.)**
 - **Video trim/stitch:** feasible only via WebCodecs/ffmpeg.wasm (large, slow);
-  likely defer. **(Open question Q3.)**
-- **DICOM (`.dcm`) image/video rendering:** needs an in-browser DICOM parser
-  (e.g. `cornerstone`/`dicom-parser`). Phase 1 can show non-DICOM media and mark
-  `.dcm` as "open externally" until added. **(Open question Q4.)**
+  likely defer. **(Q3.)**
+- **DICOM (`.dcm`) rendering:** needs an in-browser DICOM parser (e.g.
+  `cornerstone`/`dicom-parser`). Currently `.dcm` is listed but shown as "not
+  viewable yet". **(Q4.)**
 
 ---
 
 ## 6. Risks & open questions
 
-- **Q1 — Range requests:** Does `/api/files/read` support HTTP `Range`? Determines
-  whether video seeking works or we must download whole files. *Verify against
-  the OmniGate file provider before Phase 1 video work.*
-- **Q2 — PACS:** Is "Send to PACS" in scope for the web port, and if so via which
-  mechanism (drop / NAS hand-off / new endpoint)?
+- **Q1 — Range requests:** ✅ resolved — `read` streams and honours `Range`.
+- **Q2 — PACS:** Is "Send to PACS" in scope, and via which mechanism (drop / NAS
+  hand-off / new endpoint)?
 - **Q3 — Video editing:** Is trim/stitch required, or is playback enough?
-- **Q4 — DICOM:** How common are `.dcm` files in target archives? Drives whether
-  a WASM DICOM decoder is worth bundling early.
-- **Write atomicity:** `PUT` rewrites whole files with no locking. Concurrent
+- **Q4 — DICOM:** How common are `.dcm` files in target archives? Drives whether a
+  WASM DICOM decoder is worth bundling.
+- **Export status badge:** the Android card shows per-file PACS export status,
+  which isn't exposed through the file API — badge deferred unless a marker file
+  or endpoint provides it.
+- **Write atomicity:** `write` rewrites whole files with no locking; concurrent
   edits from the device + web app could clobber. Mitigate with read-before-write
   and a visible "last modified" check.
-- **Large directories:** archives can hold thousands of Studies; rely on
-  progressive hydration + virtualized scrolling for the grid.
-- **No file-watch/push:** the app must poll/refresh to see new Studies; add a
-  manual Refresh and optional interval poll.
+- **Large directories:** archives can hold thousands of Studies; progressive
+  hydration is in; add virtualized scrolling for the grid if needed.
+- **No file-watch/push:** the app polls/refreshes to see new Studies (manual
+  Refresh today; optional interval poll later).
 
 ---
 
 ## 7. Immediate next steps
 
-1. Confirm Q1 (Range) and Q4 (DICOM prevalence) — both are quick checks and gate
-   Phase 1 media handling.
-2. Extract the icon set and theme tokens into `assets/` + `styles.css`.
-3. Build `api.js` + `path.js` + `study.js`/`studyinfo.js`, then the Phase 1
-   archive grid + search against a real archive root.
-4. Point OmniGate's `--allow-dir` at a NAS/archive folder with sample Studies for
-   end-to-end testing.
+1. Get **real archive Studies** into an `--allow-dir` root and sanity-check
+   Phase 1 against them (esp. video streaming/seek and DICOM prevalence → Q4).
+2. Start **Phase 2**: Edit Study info (form + dual-write, preserving unknown
+   keys), then Copy, then Delete, then bulk actions.
+3. Decide Q2 (PACS) and Q3 (video editing) scope.
+4. Consider proposing a **server-side video thumbnail** endpoint to OmniGate to
+   replace client-side frame capture.

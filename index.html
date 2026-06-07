@@ -8,32 +8,72 @@
 </head>
 <body>
   <header class="topbar">
-    <div class="brand">🩺 <strong>MVRarchive</strong> <span class="tag">OmniGate app</span></div>
+    <div class="brand">
+      <img src="assets/icons/ic_study.svg" class="brand-icon" alt="">
+      <strong>MVRarchive</strong>
+    </div>
+
+    <div class="topbar-controls">
+      <label class="field storage">
+        <span>Storage</span>
+        <select id="root-select"></select>
+      </label>
+      <div class="search">
+        <img src="assets/icons/ic_search.svg" class="search-icon" alt="">
+        <input id="search" type="search" placeholder="Search studies…" autocomplete="off" spellcheck="false">
+        <button id="search-clear" class="iconbtn" title="Clear" hidden>✕</button>
+      </div>
+      <button id="btn-refresh" class="iconbtn" title="Refresh">⟳</button>
+    </div>
+
     <form class="logout" method="post" action="/__logout">
       <button type="submit" class="ghost">Sign out</button>
     </form>
   </header>
 
-  <main class="content">
-    <section class="hello">
-      <h1>Hello 👋</h1>
-      <p class="muted">MVRarchive web app — connectivity check.</p>
-    </section>
-
-    <section class="card">
-      <div class="card-head">
-        <h2>OmniGate API check</h2>
-        <span id="overall" class="badge pending">checking…</span>
-      </div>
-      <ul id="checks" class="checks">
-        <li data-check="roots"><span class="dot"></span><span class="label">GET /api/roots</span><span class="result">…</span></li>
-        <li data-check="files"><span class="dot"></span><span class="label">GET /api/files</span><span class="result">…</span></li>
-      </ul>
-      <pre id="detail" class="detail" hidden></pre>
-      <button id="btn-retry" class="primary">Re-run checks</button>
-    </section>
+  <!-- Archive: grid of Study cards -->
+  <main id="view-archive" class="view">
+    <div class="status-bar">
+      <span id="study-count" class="muted"></span>
+      <span id="free-space" class="muted"></span>
+    </div>
+    <div id="grid" class="grid"></div>
+    <p id="grid-empty" class="empty" hidden>No studies found.</p>
   </main>
 
-  <script src="app.js"></script>
+  <!-- Study detail: media grid + info panel -->
+  <section id="view-study" class="view" hidden>
+    <div class="detail-head">
+      <button id="btn-back" class="ghost">← Studies</button>
+      <h2 id="detail-title" class="detail-title"></h2>
+      <span id="detail-sub" class="muted"></span>
+    </div>
+    <div class="detail-body">
+      <div class="media-wrap">
+        <div id="media-grid" class="media-grid"></div>
+        <p id="media-empty" class="empty" hidden>This study has no media.</p>
+      </div>
+      <aside id="info-panel" class="info-panel"></aside>
+    </div>
+  </section>
+
+  <!-- Fullscreen media viewer -->
+  <div id="viewer" class="viewer" hidden>
+    <div class="viewer-top">
+      <span id="viewer-name" class="viewer-name"></span>
+      <button id="viewer-close" class="iconbtn" title="Close">✕</button>
+    </div>
+    <button id="viewer-prev" class="viewer-nav prev" title="Previous">‹</button>
+    <div id="viewer-stage" class="viewer-stage"></div>
+    <button id="viewer-next" class="viewer-nav next" title="Next">›</button>
+  </div>
+
+  <div id="toast" class="toast" hidden></div>
+
+  <script src="js/yaml.js"></script>
+  <script src="js/path.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/study.js"></script>
+  <script src="js/ui.js"></script>
 </body>
 </html>

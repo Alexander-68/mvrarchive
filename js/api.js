@@ -2,9 +2,8 @@
 // authenticated by the app session cookie — no token, no CORS. A 401 means the
 // session expired; we bounce to the login page.
 //
-// Endpoints (see README_OmniGate_side_apps.md):
-//   GET    /api/roots                  -> { roots: [{ path, writable }, ...] }
-//                                          (older gateways returned bare path strings)
+// Endpoints (see HOW_TO_MAKE_OMNIGATE_WEB_APPS.md):
+//   GET    /api/roots                  -> { roots: [{ name, writable }, ...] }
 //   GET    /api/files?path=            -> { path, entries: [{name,is_dir,size,mod_time}] }
 //   GET    /api/files/read?path=       -> raw bytes (Content-Type: application/octet-stream)
 //   PUT    /api/files/write?path=      -> { path, bytes }
@@ -58,13 +57,33 @@
   function fileURL(path) { return "/api/files/read" + q(path); }
   function thumbURL(path, w) { return "/api/files/thumbnail" + q(path) + (w ? `&w=${w}` : ""); }
 
-  // /api/roots returns either bare path strings (older gateways) or
-  // { path, writable } objects (newer, per --rw-dir/--ro-dir). Normalize to an
-  // array of path strings so the rest of the app always gets a usable directory.
+  function isSystemAbsolutePath(path) {
+    return /^[A-Za-z]:[\\/]/.test(path) || /^\\\\/.test(path);
+  }
+
+  function sharePath(name) {
+    const s = String(name || "").trim().replace(/^\/+|\/+$/g, "");
+    return s ? `/${s}` : "";
+  }
+
+  function normalizeRoot(root) {
+    if (typeof root === "string") {
+      if (!root) return "";
+      if (root.startsWith("/") || isSystemAbsolutePath(root)) return root;
+      return sharePath(root);
+    }
+    if (!root) return "";
+    if (root.name) return sharePath(root.name);
+    return normalizeRoot(root.path);
+  }
+
+  // /api/roots now returns named shares. The app uses virtual paths of the form
+  // /SHARE/subdir for every API call; older absolute-path gateways are tolerated
+  // so local deployments are not forced to upgrade in lockstep.
   async function roots() {
     const d = await reqJSON("GET", "/api/roots");
     return (d.roots || [])
-      .map((r) => (typeof r === "string" ? r : r && r.path))
+      .map(normalizeRoot)
       .filter(Boolean);
   }
 

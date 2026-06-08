@@ -28,6 +28,10 @@
     viewer: { study: null, media: [], index: 0, open: false, img: null,
               scale: 1, tx: 0, ty: 0, drag: null, touch: null, seq: 0 },
   };
+  const MIN_TILE_SIZE = 64;
+  const MAX_TILE_SIZE = 440;
+  const MIN_VIEWER_IMAGE_WIDTH = 64;
+  const MAX_VIEWER_SCALE = 8;
 
   // ---- small DOM helpers ----------------------------------------------------
   function el(tag, cls, text) {
@@ -353,7 +357,7 @@
     $("#media-grid").style.gridTemplateColumns = `repeat(auto-fill, minmax(${state.tileSize}px, 1fr))`;
   }
   function zoomTiles(deltaPx) {
-    state.tileSize = Math.max(96, Math.min(440, state.tileSize + deltaPx));
+    state.tileSize = Math.max(MIN_TILE_SIZE, Math.min(MAX_TILE_SIZE, state.tileSize + deltaPx));
     applyTileSize();
   }
 
@@ -512,7 +516,15 @@
       parts.push(study.folderName);
     }
     parts.push(m.name);
+    if (m.kind === "image") {
+      if (m.width && m.height) parts.push(`${m.width} x ${m.height}`);
+      parts.push(`zoom ${Math.round(state.viewer.scale * 100)}%`);
+    }
     return `${parts.join("  ·  ")}  ${counter}`;
+  }
+  function updateViewerName() {
+    const m = state.viewer.media[state.viewer.index];
+    if (m) $("#viewer-name").textContent = viewerLabel(m);
   }
   function decodeImg(img, url) {
     return new Promise((res, rej) => { img.onload = () => res(); img.onerror = rej; img.src = url; });
@@ -521,7 +533,7 @@
   async function showMedia() {
     const m = state.viewer.media[state.viewer.index];
     const stage = $("#viewer-stage");
-    $("#viewer-name").textContent = viewerLabel(m);
+    updateViewerName();
     const hasNav = state.viewer.media.length > 1;
     $("#viewer-prev").style.visibility = hasNav ? "" : "hidden";
     $("#viewer-next").style.visibility = hasNav ? "" : "hidden";
@@ -565,6 +577,8 @@
     }
     if (seq !== state.viewer.seq) return; // superseded by a newer step
 
+    m.width = img.naturalWidth || 0;
+    m.height = img.naturalHeight || 0;
     if (placeholder) placeholder.remove();
     stage.appendChild(img);
     state.viewer.img = img;
@@ -575,8 +589,19 @@
   function applyZoom() {
     const v = state.viewer;
     if (!v.img) return;
+    v.scale = clampViewerScale(v.scale);
     v.img.style.transform = `translate(${v.tx}px, ${v.ty}px) scale(${v.scale})`;
-    v.img.classList.toggle("zoomed", v.scale > 1);
+    v.img.classList.toggle("zoomed", v.scale !== 1);
+    updateViewerName();
+  }
+  function minViewerScale() {
+    const img = state.viewer.img;
+    if (!img) return 1;
+    const baseWidth = img.offsetWidth || img.naturalWidth || MIN_VIEWER_IMAGE_WIDTH;
+    return Math.min(1, MIN_VIEWER_IMAGE_WIDTH / Math.max(1, baseWidth));
+  }
+  function clampViewerScale(scale) {
+    return Math.max(minViewerScale(), Math.min(MAX_VIEWER_SCALE, scale));
   }
   function onWheel(e) {
     const v = state.viewer;
@@ -587,16 +612,17 @@
     const my = e.clientY - rect.top - rect.height / 2;
     const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
     const prev = v.scale;
-    v.scale = Math.max(1, Math.min(8, v.scale * factor));
+    v.scale = clampViewerScale(v.scale * factor);
     const k = v.scale / prev;
-    if (v.scale === 1) { v.tx = 0; v.ty = 0; }
-    else { v.tx = mx * (1 - k) + k * v.tx; v.ty = my * (1 - k) + k * v.ty; }
+    v.tx = mx * (1 - k) + k * v.tx;
+    v.ty = my * (1 - k) + k * v.ty;
     applyZoom();
   }
   function onPointerDown(e) {
     const v = state.viewer;
     if (e.pointerType === "touch") return; // touch handled by touch events below
-    if (!v.open || !v.img || v.scale === 1) return;
+    if (!v.open || !v.img) return;
+    e.preventDefault();
     v.drag = { x: e.clientX, y: e.clientY, tx: v.tx, ty: v.ty };
     v.img.classList.add("dragging");
   }
@@ -654,7 +680,7 @@
   }
 
   // ---- touch (viewer: pinch-zoom, pan, swipe) -------------------------------
-  // One finger: pan when zoomed, else horizontal swipe to change file.
+  // One finger: pan images at any zoom; non-image media still swipe.
   // Two fingers: pinch to zoom (anchored on the gesture midpoint).
   function stageCenterPoint(cx, cy) {
     const rect = $("#viewer-stage").getBoundingClientRect();
@@ -668,7 +694,7 @@
       e.preventDefault();
     } else if (e.touches.length === 1) {
       const t = e.touches[0];
-      if (v.img && v.scale > 1) {
+      if (v.img) {
         v.touch = { mode: "pan", x: t.clientX, y: t.clientY, tx: v.tx, ty: v.ty };
         e.preventDefault();
       } else {
@@ -681,11 +707,12 @@
     if (!v.touch) return;
     if (v.touch.mode === "pinch" && e.touches.length === 2) {
       e.preventDefault();
-      const k = (Math.max(1, Math.min(8, v.touch.scale * (pinchDist(e.touches) / v.touch.dist)))) / v.touch.scale;
-      v.scale = v.touch.scale * k;
+      const nextScale = clampViewerScale(v.touch.scale * (pinchDist(e.touches) / v.touch.dist));
+      const k = nextScale / v.touch.scale;
+      v.scale = nextScale;
       const mid = stageCenterPoint(...midpointXY(e.touches));
-      if (v.scale <= 1.001) { v.scale = 1; v.tx = 0; v.ty = 0; }
-      else { v.tx = mid.x - k * (mid.x - v.touch.tx); v.ty = mid.y - k * (mid.y - v.touch.ty); }
+      v.tx = mid.x - k * (mid.x - v.touch.tx);
+      v.ty = mid.y - k * (mid.y - v.touch.ty);
       applyZoom();
     } else if (v.touch.mode === "pan" && e.touches.length === 1) {
       e.preventDefault();
@@ -706,6 +733,34 @@
   }
   function midpointXY(touches) {
     return [(touches[0].clientX + touches[1].clientX) / 2, (touches[0].clientY + touches[1].clientY) / 2];
+  }
+
+  // ---- startup path ---------------------------------------------------------
+  function shareRootOf(p) {
+    const path = MVR.path.normalizeVirtual(p);
+    const i = path.indexOf("/", 1);
+    return i < 0 ? path : path.slice(0, i);
+  }
+
+  function startTarget(roots) {
+    const fallback = { share: roots[0], archivePath: roots[0], studyPath: "" };
+    const raw = new URLSearchParams(location.search).get("path");
+    if (!raw) return fallback;
+
+    const want = MVR.path.normalizeVirtual(raw);
+    const share = shareRootOf(want);
+    if (!want || !roots.includes(share)) return fallback;
+
+    const isStudy = want !== share && S.isStudyFolder(MVR.path.basename(want));
+    return {
+      share,
+      archivePath: isStudy ? MVR.path.parentOf(want) : want,
+      studyPath: isStudy ? want : "",
+    };
+  }
+
+  function rootLabel(root) {
+    return root.startsWith("/") ? root.slice(1) : root;
   }
 
   // ---- boot -----------------------------------------------------------------
@@ -748,7 +803,7 @@
     mgrid.addEventListener("touchmove", (e) => {
       if (!state.pinch || e.touches.length !== 2) return;
       const ratio = pinchDist(e.touches) / state.pinch.dist;
-      state.tileSize = Math.max(96, Math.min(440, Math.round(state.pinch.size * ratio)));
+      state.tileSize = Math.max(MIN_TILE_SIZE, Math.min(MAX_TILE_SIZE, Math.round(state.pinch.size * ratio)));
       applyTileSize();
     }, { passive: true });
     mgrid.addEventListener("touchend", () => { state.pinch = null; });
@@ -766,11 +821,20 @@
       if (!roots.length) { toast("No storage roots are configured.", true); return; }
       sel.innerHTML = "";
       for (const r of roots) {
-        const opt = el("option", null, r);
+        const opt = el("option", null, rootLabel(r));
         opt.value = r;
         sel.appendChild(opt);
       }
-      await loadArchive(roots[0]);
+      const start = startTarget(roots);
+      sel.value = start.share;
+      await loadArchive(start.archivePath);
+      if (start.studyPath) {
+        const idx = state.studies.findIndex((s) => s.path === start.studyPath);
+        if (idx >= 0) {
+          setArchiveFocus(idx);
+          await openStudy(state.studies[idx]);
+        }
+      }
     } catch (e) {
       toast("Startup failed: " + e.message, true);
     }

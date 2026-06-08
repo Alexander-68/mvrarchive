@@ -3,7 +3,8 @@
 // session expired; we bounce to the login page.
 //
 // Endpoints (see README_OmniGate_side_apps.md):
-//   GET    /api/roots                  -> { roots: [...] }
+//   GET    /api/roots                  -> { roots: [{ path, writable }, ...] }
+//                                          (older gateways returned bare path strings)
 //   GET    /api/files?path=            -> { path, entries: [{name,is_dir,size,mod_time}] }
 //   GET    /api/files/read?path=       -> raw bytes (Content-Type: application/octet-stream)
 //   PUT    /api/files/write?path=      -> { path, bytes }
@@ -57,9 +58,14 @@
   function fileURL(path) { return "/api/files/read" + q(path); }
   function thumbURL(path, w) { return "/api/files/thumbnail" + q(path) + (w ? `&w=${w}` : ""); }
 
+  // /api/roots returns either bare path strings (older gateways) or
+  // { path, writable } objects (newer, per --rw-dir/--ro-dir). Normalize to an
+  // array of path strings so the rest of the app always gets a usable directory.
   async function roots() {
     const d = await reqJSON("GET", "/api/roots");
-    return d.roots || [];
+    return (d.roots || [])
+      .map((r) => (typeof r === "string" ? r : r && r.path))
+      .filter(Boolean);
   }
 
   async function list(path) {

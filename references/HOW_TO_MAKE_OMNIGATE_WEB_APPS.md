@@ -15,32 +15,32 @@ login.
 ```
 apps/
   xplore/        reference file browser (browse, view/edit, create, delete)
-  xplore.zip     built bundle, ready to upload
+  xplore.zip     built bundle (generated; not tracked in git)
 ```
 
 Hard requirements for a valid bundle:
 
 - `index.html` MUST sit at the **zip root** (not inside a subfolder).
-- Reference assets with **relative, same-origin** URLs (`href="styles.css"`,
-  `fetch("/api/files?...")`). There is no CDN and no cross-origin access.
+- Reference assets and APIs with **relative, same-origin** URLs (`href="styles.css"`,
+  `fetch("api/files?...")`). There is no CDN and no cross-origin access.
 - Do not ship a backend, a service worker that intercepts `/api/*`, or anything
   expecting Node/PHP/etc. The gateway serves files verbatim.
 
 ## The runtime model (read before coding)
 
-Each app runs on its **own origin** (e.g. `http://127.0.0.1:9000`) behind the
+Each app runs below its own **path** (e.g. `http://127.0.0.1:8080/xplore/`) behind the
 per-app **gateway**, which:
 
 - **gates** the static files behind a login — requesting any app file without a
   valid session 303-redirects the browser to a sign-in page;
 - **brokers** a user-level file API on the app's *own* origin, so your code
-  calls plain relative URLs (`fetch("/api/files?path=…")`) — **no token, no
+  calls plain relative URLs (`fetch("api/files?path=…")`) — **no token, no
   CORS, no admin API**. The session rides in an `HttpOnly` cookie you never see;
 - forces every app session to the **User** role — an app can never act as admin,
   even if an admin signs in to it.
 
 Because auth is a cookie the JS cannot read, your code's only auth concern is
-handling a **401** on an API call (the session expired): redirect to `/__login`.
+handling a **401** on an API call (the session expired): redirect to `__login`.
 See `api()` in `xplore/app.js`.
 
 ## Required app behaviours
@@ -51,18 +51,18 @@ An app you generate MUST:
    session. It is a plain form POST — no JS or token needed:
 
    ```html
-   <form method="post" action="/__logout">
+   <form method="post" action="__logout">
      <button type="submit">Sign out</button>
    </form>
    ```
 
    The gateway clears the cookie and redirects to the login page.
 
-2. **Handle session expiry.** When any `/api/*` call returns `401`, send the
-   browser to `/__login` rather than showing a broken UI:
+2. **Handle session expiry.** When any `api/*` call returns `401`, send the
+   browser to `__login` rather than showing a broken UI:
 
    ```js
-   if (res.status === 401) { location.href = "/__login"; return; }
+   if (res.status === 401) { location.href = "__login"; return; }
    ```
 
 3. **Discover shares before touching files.** Never hard-code a path. Call
@@ -72,7 +72,8 @@ An app you generate MUST:
 
 ## API reference
 
-All endpoints are same-origin and operate at User level. `path` values are
+All endpoints are same-origin and operate at User level. Paths below are
+relative to app prefix (use `api/...` in browser URLs). `path` values are
 **virtual** (see *Paths* below).
 
 | Method | Path | Purpose | Notes |
@@ -112,7 +113,7 @@ server enforces it regardless; the UI gating is just courtesy).
 
 ### Start path (`?path=` deep-link)
 
-An app is opened at `http://<host>:<port>/`. You may append `?path=/SHARE/sub`
+An app is opened at `http://<host>:<port>/<app-id>/`. You may append `?path=/SHARE/sub`
 to deep-link into a starting location — the app should read it on boot and open
 there instead of a default. The gateway **preserves this URL across the login
 redirect** (it round-trips through a sanitised `next` parameter), so a user who
@@ -157,11 +158,11 @@ POSIX:
 From the admin dashboard's **Apps** panel, or via the API (admin token):
 
 ```sh
-curl -s -X POST http://localhost:8080/api/apps \
+curl -s -X POST http://localhost:8000/api/apps \
   -H "Authorization: Bearer $TOKEN" \
   -F name=xplore -F bundle=@apps/xplore.zip
-# -> {"id":"xplore","port":9000,...}
+# -> {"id":"xplore","port":8080,...}
 ```
 
-Then open the reported port (e.g. <http://127.0.0.1:9000>), sign in, and use it.
+Then open the reported app URL (e.g. <http://127.0.0.1:8080/xplore/>), sign in, and use it.
 To deep-link into a folder, append `?path=/SHARE/sub` to that URL.

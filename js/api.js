@@ -36,7 +36,7 @@
     if (body !== undefined) opts.body = body;
     const res = await fetch(url, opts);
     if (res.status === 401) {
-      location.href = "/__login";
+      location.href = "__login";
       throw new Error("session expired");
     }
     return res;
@@ -54,8 +54,8 @@
   // Same-origin, cookie-authenticated URLs that can be used directly as the
   // src of <img>/<video>/<iframe>. read streams and honours HTTP Range (so
   // <video> seeks natively); thumbnail returns a small JPEG for images.
-  function fileURL(path) { return "/api/files/read" + q(path); }
-  function thumbURL(path, w) { return "/api/files/thumbnail" + q(path) + (w ? `&w=${w}` : ""); }
+  function fileURL(path) { return "api/files/read" + q(path); }
+  function thumbURL(path, w) { return "api/files/thumbnail" + q(path) + (w ? `&w=${w}` : ""); }
 
   function isSystemAbsolutePath(path) {
     return /^[A-Za-z]:[\\/]/.test(path) || /^\\\\/.test(path);
@@ -81,19 +81,19 @@
   // /SHARE/subdir for every API call; older absolute-path gateways are tolerated
   // so local deployments are not forced to upgrade in lockstep.
   async function roots() {
-    const d = await reqJSON("GET", "/api/roots");
+    const d = await reqJSON("GET", "api/roots");
     return (d.roots || [])
       .map(normalizeRoot)
       .filter(Boolean);
   }
 
   async function list(path) {
-    const d = await reqJSON("GET", "/api/files" + q(path));
+    const d = await reqJSON("GET", "api/files" + q(path));
     return d.entries || [];
   }
 
   async function readText(path) {
-    const res = await req("GET", "/api/files/read" + q(path));
+    const res = await req("GET", "api/files/read" + q(path));
     if (!res.ok) {
       const d = await res.json().catch(() => ({}));
       throw new Error(d.error || `${res.status}`);
@@ -104,7 +104,7 @@
   // readBlob returns a Blob re-typed by the file's extension, because the server
   // always sends application/octet-stream and <img>/<video> need a real MIME.
   async function readBlob(path, name) {
-    const res = await req("GET", "/api/files/read" + q(path));
+    const res = await req("GET", "api/files/read" + q(path));
     if (!res.ok) {
       const d = await res.json().catch(() => ({}));
       throw new Error(d.error || `${res.status}`);
@@ -120,13 +120,13 @@
 
   // --- mutating endpoints (used from Phase 2 onward) ---
   async function writeText(path, text) {
-    return reqJSON("PUT", "/api/files/write" + q(path), text);
+    return reqJSON("PUT", "api/files/write" + q(path), text);
   }
   async function mkdir(path) {
-    return reqJSON("POST", "/api/files/mkdir" + q(path));
+    return reqJSON("POST", "api/files/mkdir" + q(path));
   }
   async function del(path) {
-    return reqJSON("DELETE", "/api/files/delete" + q(path));
+    return reqJSON("DELETE", "api/files/delete" + q(path));
   }
 
   MVR.api = { roots, list, readText, readBlob, objectURL, fileURL, thumbURL, writeText, mkdir, del, mimeFor };

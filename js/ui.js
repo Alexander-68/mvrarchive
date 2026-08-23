@@ -33,6 +33,321 @@
   const MIN_VIEWER_IMAGE_WIDTH = 64;
   const MAX_VIEWER_SCALE = 8;
 
+  const CARD_HYDRATE_CONCURRENCY = 4;
+  const MEDIA_PREVIEW_CONCURRENCY = 4;
+
+  // ---- scroll tracking & multi-tier lazy load scheduler ---------------------
+  let lastScrollY = window.scrollY || 0;
+  let scrollDirection = "down"; // "down" | "up"
+  let isScrolling = false;
+  let scrollStopTimer = null;
+
+  function onScroll() {
+    const currentY = window.scrollY || 0;
+    if (currentY > lastScrollY + 2) {
+      scrollDirection = "down";
+    } else if (currentY < lastScrollY - 2) {
+      scrollDirection = "up";
+    }
+    lastScrollY = currentY;
+    isScrolling = true;
+
+    // While fast-scrolling, prioritize whatever is currently visible on screen
+    pumpCardQueue();
+    pumpMediaQueue();
+
+    clearTimeout(scrollStopTimer);
+    scrollStopTimer = setTimeout(() => {
+      isScrolling = false;
+      // When scroll stops, schedule 1.5x ahead and 1.5x behind preloads
+      scanAndScheduleLazyLoads();
+    }, 130);
+  }
+
+  window.addEventListener("scroll", onScroll, { passive: true });
+
+  // Compute element zone relative to current viewport and scroll direction:
+  // 1 = Visible (on screen)
+  // 2 = Ahead (1.5x viewports in scroll direction)
+  // 3 = Behind (1.5x viewports in opposite direction)
+  // 0 = Far / outside 1.5x viewport
+  function getElementZone(element) {
+    if (!element || element.hidden) return 0;
+    const rect = element.getBoundingClientRect();
+    const vh = window.innerHeight || document.documentElement.clientHeight || 800;
+    const top = rect.top;
+    const bottom = rect.bottom;
+
+    // 1. Visible on screen
+    if (bottom >= 0 && top <= vh) {
+      return 1;
+    }
+
+    const margin = 1.5 * vh;
+
+    if (scrollDirection === "down") {
+      // 2. Ahead: below screen within 1.5x vh
+      if (top > vh && top <= vh + margin) return 2;
+      // 3. Behind: above screen within 1.5x vh
+      if (bottom < 0 && bottom >= -margin) return 3;
+    } else {
+      // Scrolling up:
+      // 2. Ahead: above screen within 1.5x vh
+      if (bottom < 0 && bottom >= -margin) return 2;
+      // 3. Behind: below screen within 1.5x vh
+      if (top > vh && top <= vh + margin) return 3;
+    }
+
+    return 0;
+  }
+
+  // --- Study Cards Lazy Scheduler ---
+  let activeCardWorkers = 0;
+  const cardQueue = []; // array of studies
+  let cardVisibleObserver = null;
+
+  function enqueueCard(study, priority) {
+    if (study.hydrated || study._loading) return;
+    study._priority = Math.min(study._priority || 99, priority);
+    if (!cardQueue.includes(study)) {
+      cardQueue.push(study);
+    }
+    sortCardQueue();
+    pumpCardQueue();
+  }
+
+  function sortCardQueue() {
+    cardQueue.sort((a, b) => (a._priority || 99) - (b._priority || 99));
+  }
+
+  function pumpCardQueue() {
+    if (!cardQueue.length) return;
+
+    // If currently scrolling fast, only process priority 1 (visible) items
+    while (activeCardWorkers < CARD_HYDRATE_CONCURRENCY && cardQueue.length > 0) {
+      sortCardQueue();
+      const topStudy = cardQueue[0];
+      if (!topStudy) break;
+
+      if (isScrolling && topStudy._priority > 1) {
+        // Wait for scrolling to settle before processing ahead/behind preloads
+        break;
+      }
+
+      cardQueue.shift();
+      if (topStudy.hydrated || topStudy._loading) continue;
+
+      topStudy._loading = true;
+      activeCardWorkers++;
+
+      (async () => {
+        try {
+          await S.hydrate(topStudy);
+          fillCard(topStudy);
+          if (state.query) applySearch();
+        } catch (e) {
+          /* ignore error */
+        } finally {
+          topStudy._loading = false;
+          activeCardWorkers--;
+          pumpCardQueue();
+        }
+      })();
+    }
+  }
+
+  function setupCardObservers() {
+    if (cardVisibleObserver) cardVisibleObserver.disconnect();
+    if (!window.IntersectionObserver) return;
+
+    // Visible-on-screen observer (0px rootMargin)
+    cardVisibleObserver = new IntersectionObserver((entries) => {
+      for (const entry of entries) {
+        if (entry.isIntersecting) {
+          const study = entry.target._study;
+          if (study && !study.hydrated) {
+            study._priority = 1;
+            enqueueCard(study, 1);
+          }
+        }
+      }
+    }, {
+      rootMargin: "0px",
+      threshold: 0.01,
+    });
+  }
+
+  // --- Media Preview Tiles Lazy Scheduler ---
+  let activeMediaWorkers = 0;
+  const mediaQueue = []; // array of media items { media, loadFn, priority }
+  let mediaVisibleObserver = null;
+
+  function enqueueMedia(item, priority) {
+    if (item.media._previewLoaded || item.media._previewLoading) return;
+    item.priority = Math.min(item.priority || 99, priority);
+    if (!mediaQueue.includes(item)) {
+      mediaQueue.push(item);
+    }
+    sortMediaQueue();
+    pumpMediaQueue();
+  }
+
+  function sortMediaQueue() {
+    mediaQueue.sort((a, b) => (a.priority || 99) - (b.priority || 99));
+  }
+
+  function pumpMediaQueue() {
+    if (!mediaQueue.length) return;
+
+    while (activeMediaWorkers < MEDIA_PREVIEW_CONCURRENCY && mediaQueue.length > 0) {
+      sortMediaQueue();
+      const topItem = mediaQueue[0];
+      if (!topItem) break;
+
+      if (isScrolling && topItem.priority > 1) {
+        break;
+      }
+
+      mediaQueue.shift();
+      if (topItem.media._previewLoaded || topItem.media._previewLoading) continue;
+
+      topItem.media._previewLoading = true;
+      activeMediaWorkers++;
+
+      (async () => {
+        try {
+          await topItem.loadFn();
+          topItem.media._previewLoaded = true;
+        } catch (e) {
+          /* ignore */
+        } finally {
+          topItem.media._previewLoading = false;
+          activeMediaWorkers--;
+          pumpMediaQueue();
+        }
+      })();
+    }
+  }
+
+  function setupMediaObservers() {
+    if (mediaVisibleObserver) mediaVisibleObserver.disconnect();
+    if (!window.IntersectionObserver) return;
+
+    mediaVisibleObserver = new IntersectionObserver((entries) => {
+      for (const entry of entries) {
+        if (entry.isIntersecting) {
+          const tile = entry.target;
+          if (tile._queueItem && !tile._queueItem.media._previewLoaded) {
+            tile._queueItem.priority = 1;
+            enqueueMedia(tile._queueItem, 1);
+          }
+        }
+      }
+    }, {
+      rootMargin: "0px",
+      threshold: 0.01,
+    });
+  }
+
+  // Scan all items in the active view to assign Priority 1 (visible),
+  // Priority 2 (1.5x ahead), and Priority 3 (1.5x behind)
+  function scanAndScheduleLazyLoads() {
+    if (state.view === "archive") {
+      const vis = visibleStudies();
+      for (const study of vis) {
+        if (study.hydrated || study._loading || !study.cardEl) continue;
+        const zone = getElementZone(study.cardEl);
+        if (zone > 0) {
+          study._priority = zone;
+          enqueueCard(study, zone);
+        }
+      }
+    } else if (state.view === "study" && state.current) {
+      for (const m of state.current.media) {
+        if (m._previewLoaded || m._previewLoading || !m.tileEl) continue;
+        const zone = getElementZone(m.tileEl);
+        if (zone > 0 && m.tileEl._queueItem) {
+          m.tileEl._queueItem.priority = zone;
+          enqueueMedia(m.tileEl._queueItem, zone);
+        }
+      }
+    }
+  }
+
+  // ---- theme & omnigate bridge ----------------------------------------------
+  function applyTheme(theme) {
+    if (theme === "light" || theme === "dark") {
+      document.documentElement.dataset.theme = theme;
+    }
+  }
+
+  function applyZoom(zoom) {
+    if (zoom) {
+      document.documentElement.style.zoom = zoom + "%";
+    }
+  }
+
+  async function syncPlatform() {
+    try {
+      const p = await api.platform();
+      if (p && p.platform === "omnigate") {
+        if (p.theme) applyTheme(p.theme);
+        if (p.zoom) applyZoom(p.zoom);
+      }
+    } catch (e) { /* ignore */ }
+  }
+
+  function setupThemeBridge() {
+    window.addEventListener("message", (e) => {
+      if (!e.data) return;
+      if (typeof e.data === "string") {
+        if (e.data === "light" || e.data === "dark") applyTheme(e.data);
+        return;
+      }
+      if (typeof e.data === "object") {
+        const t = e.data.theme || (e.data.type === "theme" && e.data.value);
+        if (t === "light" || t === "dark") applyTheme(t);
+        if (e.data.zoom) applyZoom(e.data.zoom);
+        const u = e.data.user || e.data.username;
+        if (u) {
+          const elName = $("#user-name");
+          if (elName) elName.textContent = typeof u === "string" ? u : u.username;
+        }
+      }
+    });
+  }
+
+  async function initUser() {
+    try {
+      const u = await api.me();
+      const username = u && (u.username || u.name);
+      if (username) {
+        const elName = $("#user-name");
+        if (elName) {
+          elName.textContent = username;
+          elName.title = u.role ? `Signed in as ${username} (${u.role})` : `Signed in as ${username}`;
+        }
+        return;
+      }
+    } catch (e) { /* fall through to URL params / storage */ }
+
+    const urlUser = new URLSearchParams(location.search).get("user") ||
+                    new URLSearchParams(location.search).get("username");
+    if (urlUser) {
+      const elName = $("#user-name");
+      if (elName) elName.textContent = urlUser;
+      return;
+    }
+
+    try {
+      const stored = sessionStorage.getItem("username") || localStorage.getItem("username");
+      if (stored) {
+        const elName = $("#user-name");
+        if (elName) elName.textContent = stored;
+      }
+    } catch (e) { /* ignore */ }
+  }
+
   // ---- small DOM helpers ----------------------------------------------------
   function el(tag, cls, text) {
     const n = document.createElement(tag);
@@ -48,12 +363,13 @@
   }
   // captureVideoFrame grabs a poster frame from a video by streaming just enough
   // of it (read honours Range), seeking ~1s in, and drawing to a canvas. The
-  // thumbnail endpoint is images-only, so this is how video tiles get a preview.
+  // thumbnail endpoint is tried first; when ffmpeg is absent, this browser-side
+  // decoder is the fallback.
   // Resolves to a data URL, or null if anything fails.
   function captureVideoFrame(url, w) {
     return new Promise((resolve) => {
       const v = document.createElement("video");
-      v.muted = true; v.preload = "metadata"; v.src = url;
+      v.muted = true; v.preload = "metadata"; v.crossOrigin = "anonymous"; v.src = url;
       let settled = false;
       const finish = (val) => { if (settled) return; settled = true; v.removeAttribute("src"); resolve(val); };
       v.onloadeddata = () => { try { v.currentTime = Math.min(1, (v.duration || 2) / 2); } catch (e) { finish(null); } };
@@ -92,23 +408,12 @@
     $("#view-archive").hidden = false;
     state.current = null;
     updateArchiveFocus();
+    scanAndScheduleLazyLoads();
   }
   function showStudy() {
     state.view = "study";
     $("#view-archive").hidden = true;
     $("#view-study").hidden = false;
-  }
-
-  // ---- concurrency pool -----------------------------------------------------
-  async function pool(items, limit, worker) {
-    let i = 0;
-    const runners = Array.from({ length: Math.min(limit, items.length) }, async () => {
-      while (i < items.length) {
-        const idx = i++;
-        try { await worker(items[idx], idx); } catch (e) { /* keep going */ }
-      }
-    });
-    await Promise.all(runners);
   }
 
   // ---- archive grid ---------------------------------------------------------
@@ -120,6 +425,8 @@
     $("#grid-empty").hidden = true;
     $("#study-count").textContent = "Loading…";
     refreshStatusRight();
+
+    cardQueue.length = 0;
 
     let entries;
     try {
@@ -134,39 +441,60 @@
       .filter((e) => e.is_dir && S.isStudyFolder(e.name))
       .sort((a, b) => (Date.parse(b.mod_time) || 0) - (Date.parse(a.mod_time) || 0));
 
+    // When storage has no subfolders (studies), go to file view mode directly!
+    if (folders.length === 0) {
+      const directStudy = S.newStudy(root, {
+        name: MVR.path.basename(root) || root,
+        mod_time: "",
+      });
+      directStudy.path = root;
+      directStudy.isDirectRoot = true;
+      state.studies = [directStudy];
+      state.focus = 0;
+      $("#study-count").textContent = "Direct file view";
+      await openStudy(directStudy);
+      return;
+    }
+
     state.studies = folders.map((e) => S.newStudy(root, e));
     state.focus = 0;
     $("#grid-empty").hidden = state.studies.length > 0;
 
+    const total = state.studies.length;
+    $("#study-count").textContent = `${total} stud${total === 1 ? "y" : "ies"}`;
+
+    setupCardObservers();
+
     for (const study of state.studies) {
       study.cardEl = buildCard(study);
+      study.cardEl._study = study;
       grid.appendChild(study.cardEl);
+
+      if (cardVisibleObserver) {
+        cardVisibleObserver.observe(study.cardEl);
+      } else {
+        enqueueCard(study, 1);
+      }
     }
+
     applySearch();
     updateArchiveFocus();
-
-    let done = 0;
-    const total = state.studies.length;
-    const tick = () => ($("#study-count").textContent =
-      `${total} stud${total === 1 ? "y" : "ies"}` + (done < total ? ` · loading ${done}/${total}…` : ""));
-    tick();
-
-    await pool(state.studies, 4, async (study) => {
-      await S.hydrate(study);
-      fillCard(study);
-      done++; tick();
-      applySearch();
-    });
+    scanAndScheduleLazyLoads();
   }
 
   function buildCard(study) {
     const card = el("div", "card");
     card.dataset.folder = study.folderName;
+
+    const parsed = S.parseStampName(study.folderName);
+    const initialTitle = (parsed && parsed.studyId) ? parsed.studyId : study.folderName;
+    const initialDate = parsed && parsed.date ? S.formatDate(parsed.date) : (study.modTime ? S.formatDate(new Date(study.modTime)) : "—");
+
     card.innerHTML = `
       <div class="card-thumb loading"></div>
       <div class="card-body">
-        <div class="card-title">${escapeHTML(study.folderName)}</div>
-        <div class="card-date muted">—</div>
+        <div class="card-title">${escapeHTML(initialTitle)}</div>
+        <div class="card-date muted">${escapeHTML(initialDate)}</div>
         <div class="card-meta"></div>
         <div class="card-sub"></div>
       </div>`;
@@ -209,27 +537,34 @@
     const dob = S.formatDOB(i);
     if (dob) sub.appendChild(subItem("ic_birthday", dob));
 
-    // Thumbnail: server JPEG of the first image; if the study has only video,
-    // capture a poster frame. Nothing is drawn over it.
+    // Thumbnail: server JPEG of the first image/video; falls back to browser-side
+    // video frame capture if server lacks video thumbnail codecs.
     const thumb = card.querySelector(".card-thumb");
-    const setThumb = (src) => {
+    const targetFile = study.thumbFile || study.media.find((m) => m.kind === "video");
+
+    if (targetFile) {
       const img = el("img", "thumb-img");
-      img.src = src;
       img.onload = () => { thumb.classList.remove("loading"); thumb.appendChild(img); };
-      img.onerror = () => { thumb.classList.remove("loading"); addPlaceholder(thumb); };
-    };
-    if (study.thumbFile) {
-      setThumb(api.thumbURL(study.thumbFile.path, 400));
+      img.onerror = () => {
+        if (targetFile.kind === "video") {
+          captureVideoFrame(api.fileURL(targetFile.path), 400).then((data) => {
+            if (data) {
+              img.onerror = () => { thumb.classList.remove("loading"); addPlaceholder(thumb); };
+              img.src = data;
+            } else {
+              thumb.classList.remove("loading");
+              addPlaceholder(thumb);
+            }
+          });
+        } else {
+          thumb.classList.remove("loading");
+          addPlaceholder(thumb);
+        }
+      };
+      img.src = api.thumbURL(targetFile.path, 400);
     } else {
-      const vid = study.media.find((m) => m.kind === "video");
-      if (vid) {
-        captureVideoFrame(api.fileURL(vid.path), 400).then((data) => {
-          if (data) setThumb(data); else { thumb.classList.remove("loading"); addPlaceholder(thumb); }
-        });
-      } else {
-        thumb.classList.remove("loading");
-        addPlaceholder(thumb);
-      }
+      thumb.classList.remove("loading");
+      addPlaceholder(thumb);
     }
   }
 
@@ -246,7 +581,12 @@
       if (!study.cardEl) continue;
       const show = S.matches(study, q);
       study.cardEl.hidden = !show;
-      if (show) visible++;
+      if (show) {
+        visible++;
+        if (q && !study.hydrated) {
+          enqueueCard(study, 1);
+        }
+      }
     }
     $("#search-clear").hidden = !q;
     if (q) {
@@ -254,9 +594,13 @@
       $("#study-count").textContent = `${visible} of ${state.studies.length} match “${q}”`;
     } else {
       $("#grid-empty").hidden = state.studies.length > 0;
+      $("#study-count").textContent = `${state.studies.length} stud${state.studies.length === 1 ? "y" : "ies"}`;
     }
     refreshStatusRight();
-    if (state.view === "archive") updateArchiveFocus();
+    if (state.view === "archive") {
+      updateArchiveFocus();
+      scanAndScheduleLazyLoads();
+    }
   }
 
   function refreshStatusRight() {
@@ -286,9 +630,13 @@
     const vis = visibleStudies();
     if (!vis.length) return;
     state.focus = Math.max(0, Math.min(state.focus, vis.length - 1));
-    const elc = vis[state.focus].cardEl;
+    const currentStudy = vis[state.focus];
+    const elc = currentStudy.cardEl;
     elc.classList.add("focused");
     elc.scrollIntoView({ block: "nearest" });
+    if (!currentStudy.hydrated) {
+      enqueueCard(currentStudy, 1);
+    }
   }
   function moveArchiveFocus(dir) {
     const vis = visibleStudies();
@@ -327,8 +675,8 @@
     const list = studyNavList();
     const idx = list.indexOf(state.current);
     const inList = idx >= 0;
-    $("#btn-prev-study").disabled = inList ? idx <= 0 : list.length === 0;
-    $("#btn-next-study").disabled = inList ? idx >= list.length - 1 : list.length === 0;
+    $("#btn-prev-study").disabled = inList ? idx <= 0 : list.length <= 1;
+    $("#btn-next-study").disabled = inList ? idx >= list.length - 1 : list.length <= 1;
   }
 
   async function openStudy(study) {
@@ -341,7 +689,9 @@
       try { await S.hydrate(study); } catch (e) { toast(e.message, true); }
     }
     const c = study.counters;
-    const bits = [S.formatDate(S.studyDate(study))];
+    const bits = [];
+    const dt = S.formatDate(S.studyDate(study));
+    if (dt) bits.push(dt);
     bits.push(`${c.images} image${c.images === 1 ? "" : "s"}`, `${c.videos} video${c.videos === 1 ? "" : "s"}`);
     if (c.pdfs) bits.push(`${c.pdfs} report${c.pdfs === 1 ? "" : "s"}`);
     $("#detail-sub").textContent = bits.filter(Boolean).join(" · ");
@@ -367,26 +717,61 @@
     applyTileSize();
     $("#media-empty").hidden = study.media.length > 0;
 
+    mediaQueue.length = 0;
+    setupMediaObservers();
+
     study.media.forEach((m, idx) => {
       const tile = el("div", "media-tile");
       m.tileEl = tile;
+      m._previewLoaded = false;
+      m._previewLoading = false;
+
       // Single compact caption, e.g. "IMAGE, I0002.jpg".
       tile.appendChild(el("span", "cap", `${m.kind.toUpperCase()}, ${m.name}`));
       const ic = icon(m.kind === "video" ? "ic_video" : m.kind === "pdf" ? "ic_pdf" : "ic_image", "ic");
       tile.appendChild(ic);
-      const setTilePreview = (src) => {
-        const img = el("img");
-        img.src = src;
-        img.onload = () => { tile.insertBefore(img, tile.firstChild); ic.remove(); };
+
+      const loadPreview = async () => {
+        if (m.kind === "image" || m.kind === "video") {
+          return new Promise((resolve) => {
+            const img = el("img");
+            img.onload = () => {
+              tile.insertBefore(img, tile.firstChild);
+              ic.remove();
+              resolve();
+            };
+            img.onerror = () => {
+              if (m.kind === "video") {
+                captureVideoFrame(api.fileURL(m.path), 400).then((data) => {
+                  if (data) {
+                    img.onerror = null;
+                    img.src = data;
+                  }
+                  resolve();
+                });
+              } else {
+                resolve();
+              }
+            };
+            img.src = api.thumbURL(m.path, 400);
+          });
+        }
       };
-      if (m.kind === "image") {
-        setTilePreview(api.thumbURL(m.path, 400));
-      } else if (m.kind === "video") {
-        captureVideoFrame(api.fileURL(m.path), 400).then((data) => { if (data) setTilePreview(data); });
+
+      const queueItem = { media: m, loadFn: loadPreview, priority: 1 };
+      tile._queueItem = queueItem;
+
+      if (mediaVisibleObserver) {
+        mediaVisibleObserver.observe(tile);
+      } else {
+        enqueueMedia(queueItem, 1);
       }
+
       tile.onclick = () => { setMediaFocus(idx); openViewer(study, idx); };
       grid.appendChild(tile);
     });
+
+    scanAndScheduleLazyLoads();
   }
 
   function setMediaFocus(i) {
@@ -400,8 +785,15 @@
     media.forEach((m) => m.tileEl && m.tileEl.classList.remove("focused"));
     if (!media.length) return;
     state.mediaFocus = Math.max(0, Math.min(state.mediaFocus, media.length - 1));
-    const t = media[state.mediaFocus].tileEl;
-    if (t) { t.classList.add("focused"); t.scrollIntoView({ block: "nearest" }); }
+    const currentMedia = media[state.mediaFocus];
+    const t = currentMedia.tileEl;
+    if (t) {
+      t.classList.add("focused");
+      t.scrollIntoView({ block: "nearest" });
+      if (t._queueItem && !t._queueItem.media._previewLoaded) {
+        enqueueMedia(t._queueItem, 1);
+      }
+    }
   }
   function moveMediaFocus(dir) {
     const media = state.current ? state.current.media : [];
@@ -544,7 +936,7 @@
     // seeks natively and PDFs render with their real content-type.
     clearStage();
     const ext = MVR.path.extname(m.name);
-    if (ext === "dcm") {
+    if (ext === "dcm" || ext === "dicom") {
       stage.appendChild(el("div", "msg", `DICOM files (${m.name}) are not viewable yet — a DICOM decoder is planned for a later phase.`));
       return;
     }
@@ -765,6 +1157,10 @@
 
   // ---- boot -----------------------------------------------------------------
   async function boot() {
+    setupThemeBridge();
+    await syncPlatform();
+    await initUser();
+
     $("#btn-refresh").onclick = () => loadArchive(state.root);
     $("#btn-back").onclick = showArchive;
     $("#btn-prev-study").onclick = () => navStudy(-1);
@@ -808,9 +1204,10 @@
     }, { passive: true });
     mgrid.addEventListener("touchend", () => { state.pinch = null; });
 
-    // Re-flow the focus cursor when the grid wraps to a new column count.
+    // Re-flow the focus cursor and scheduler when the grid wraps to a new column count.
     window.addEventListener("resize", () => {
       if (state.view === "archive") updateArchiveFocus();
+      scanAndScheduleLazyLoads();
     });
 
     const sel = $("#root-select");

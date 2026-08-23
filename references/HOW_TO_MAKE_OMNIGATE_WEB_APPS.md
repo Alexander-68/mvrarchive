@@ -78,13 +78,17 @@ relative to app prefix (use `api/...` in browser URLs). `path` values are
 
 | Method | Path | Purpose | Notes |
 |--------|------|---------|-------|
+| `GET` | `/api/platform` | Identify the gateway and read its display settings | **No session needed.** Returns `{"platform":"omnigate","product","version","theme","zoom"}` |
+| `GET` | `/api/me` | Current authenticated user identity | Returns `{"username","role"}` |
 | `GET` | `/api/roots` | List available shares | Returns `{"roots":[{"name","writable"}]}` |
 | `GET` | `/api/files?path=` | List a directory | Returns `{"path","entries":[{name,is_dir,size,mod_time}]}` |
 | `GET` | `/api/files/read?path=` | Read a file | Streams; honours `Range` (seek/resume, in-browser video frames) |
-| `GET` | `/api/files/thumbnail?path=&w=` | JPEG thumbnail of an **image** | `w` defaults to 320, capped at 2048; never upscales |
+| `GET` | `/api/files/thumbnail?path=&w=` | JPEG thumbnail of an **image, video or DICOM file** | `w` defaults to 320, capped at 2048, never upscales; videos are fixed at 640 and need ffmpeg (else `415`); `.dcm`/`.dicom` previews are capped at 640 and need DCMTK (else `415`) |
 | `PUT` | `/api/files/write?path=` | Write/create a file | Raw request body is the file content (≤ 32 MiB) |
 | `POST` | `/api/files/mkdir?path=` | Create a folder | Creates missing parents |
 | `DELETE` | `/api/files/delete?path=` | Delete a file or folder | Recursive; cannot delete a share root |
+| `GET` | `/api/dcmtk` | List available DCMTK tools | `503` when DCMTK is not installed on the gateway host |
+| `POST` | `/api/dcmtk/{tool}` | Run a DCMTK tool | Body `{"args":[...],"timeoutSec":60}`. Mark jail files as `in:/Share/path` / `out:/Share/path` (out needs a writable share); other args pass verbatim, but unmarked args containing `/`, `\`, `..` or a drive prefix are rejected (`400`). Returns `{exitCode,stdout,stderr,stdoutTruncated,stderrTruncated}`; nonzero exit is still `200` |
 | `POST` | `/__login` | Sign in (form post) | Gateway-rendered page; you rarely call this directly |
 | `POST` | `/__logout` | End the session | Use for the Sign Out control above |
 
@@ -98,6 +102,30 @@ Error responses are JSON `{"error": "..."}` with a matching HTTP status:
 | `404` | Target does not exist |
 | `413` | Write body exceeds 32 MiB |
 
+### Detecting OmniGate and matching its look
+
+`GET api/platform` needs no session, so an app can call it as soon as it loads —
+including from its own login page. `platform === "omnigate"` means the app is
+running on the gateway rather than opened standalone; `version` is the gateway
+version (`v1.0.YYMMDD`). `theme` is `"dark"` or `"light"` and `zoom` is a
+percentage (60–200), both device-wide settings of the gateway UI:
+
+```js
+const p = await (await fetch("api/platform")).json();
+if (p.platform === "omnigate") {
+  document.documentElement.dataset.theme = p.theme;
+  document.documentElement.style.zoom = p.zoom + "%";
+}
+```
+
+The bundled `apps/xplore` demo does exactly this: the fetch sits inline in its
+`<head>` and its stylesheet carries an `html[data-theme="light"]` block, so the
+gateway's dark/light choice and zoom carry into the app.
+
+The endpoint is also served on the gateway's own origin (`/api/platform`) with
+`Access-Control-Allow-Origin: *`, which is how a **linked external** app — one
+not hosted by the sandbox — can read it.
+
 ### Paths are virtual share paths
 
 A `path` is **not** a server filesystem path. It is `/SHARE/sub/dir/file`, where
@@ -110,6 +138,14 @@ root (via `..` or a symlink), is rejected by the jail.
 Each share carries a `writable` flag. For a read-only share, `write`, `mkdir`,
 and `delete` return `403` — hide those controls when `writable` is false (the
 server enforces it regardless; the UI gating is just courtesy).
+
+A share may also carry `"remote": true`: it is SMB network storage rather than
+local disk, configured by the user or an admin in Settings. Reads, writes and
+listings behave identically, so an app needs no special case for it — but two
+server-side features are unavailable there and answer `415`: video poster frames
+(fall back to the client-side capture below, which you already need for hosts
+without ffmpeg) and the DCMTK bridge. Network shares can also be slower and can
+disappear when the server does, so treat their errors as normal, not fatal.
 
 ### Start path (`?path=` deep-link)
 
@@ -129,12 +165,21 @@ See `startPath()` and `boot()` in `xplore/app.js` for the full pattern,
 including falling back to the first share when `path` is absent or names an
 unknown share.
 
-### Thumbnails: images on the server, video in the browser
+### Thumbnails: one endpoint for images, video and DICOM
 
-`thumbnail` covers **images** only. For **video** previews, capture a frame in
-the browser: point a hidden `<video>` at `/api/files/read?path=…` (which
-supports HTTP Range, so only the needed bytes are fetched), seek a second in,
-and draw it onto a `<canvas>`. No server-side codec is involved. See
+Point an `<img>` at `/api/files/thumbnail?path=…` for images, videos and
+`.dcm` files — the server decodes JPEG/PNG/GIF itself, pulls video poster
+frames with ffmpeg (640 px, cached beside the video; the `w` parameter is
+ignored there) and renders DICOM previews through DCMTK's `dcmj2pnm` (640 px
+cap, same hidden-file cache).
+
+Video frames need ffmpeg on the host, DICOM previews need DCMTK, and both need
+the file on local disk; without the tool (or on a `remote` share) the request
+answers `415`. Fall
+back in the `<img>`'s `onerror`: point a hidden `<video>` at
+`/api/files/read?path=…` (HTTP Range, so only the needed bytes are fetched),
+seek a second in, and draw it onto a `<canvas>`; for non-video failures show an
+icon. See `mediaThumb` and
 `captureVideoFrame` in `xplore/app.js` for a working example.
 
 ## Building a bundle

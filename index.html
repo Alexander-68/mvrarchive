@@ -5,12 +5,25 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>MVRarchive</title>
   <link rel="stylesheet" href="styles.css">
+  <!-- Follow the gateway's look: /api/platform is unauthenticated, so this runs
+       before login too. Inline and in <head> so the theme lands as early as the
+       reply allows. Standalone (no OmniGate) keeps the dark default. -->
+  <script>
+    fetch("api/platform").then((r) => r.json()).then((p) => {
+      if (p.platform !== "omnigate") return;
+      if (p.theme) document.documentElement.dataset.theme = p.theme;
+      if (p.zoom) document.documentElement.style.zoom = p.zoom + "%";
+    }).catch(() => {});
+  </script>
 </head>
 <body>
   <header class="topbar">
     <div class="brand">
       <img src="assets/icons/ic_study.svg" class="brand-icon" alt="">
-      <strong>MVRarchive</strong>
+      <div class="brand-text">
+        <strong>MVRarchive</strong>
+        <span class="app-version muted">1.0.260823</span>
+      </div>
     </div>
 
     <div class="topbar-controls">
@@ -26,9 +39,12 @@
       <button id="btn-refresh" class="iconbtn" title="Refresh">⟳</button>
     </div>
 
-    <form class="logout" method="post" action="__logout">
-      <button type="submit" class="ghost">Sign out</button>
-    </form>
+    <div class="topbar-user">
+      <span id="user-name" class="user-name muted"></span>
+      <form class="logout" method="post" action="__logout">
+        <button type="submit" class="ghost">Sign out</button>
+      </form>
+    </div>
   </header>
 
   <!-- Archive: grid of Study cards -->

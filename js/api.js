@@ -3,16 +3,15 @@
 // session expired; we bounce to the login page.
 //
 // Endpoints (see HOW_TO_MAKE_OMNIGATE_WEB_APPS.md):
+//   GET    /api/platform               -> { platform, product, version, theme, zoom }
+//   GET    /api/me                     -> { username, role }
 //   GET    /api/roots                  -> { roots: [{ name, writable }, ...] }
 //   GET    /api/files?path=            -> { path, entries: [{name,is_dir,size,mod_time}] }
-//   GET    /api/files/read?path=       -> raw bytes (Content-Type: application/octet-stream)
+//   GET    /api/files/read?path=       -> raw bytes (streams, honours Range)
+//   GET    /api/files/thumbnail?path=  -> JPEG thumbnail
 //   PUT    /api/files/write?path=      -> { path, bytes }
 //   POST   /api/files/mkdir?path=      -> { path, created }
 //   DELETE /api/files/delete?path=     -> { path, deleted }
-//
-// NOTE: read returns the whole file (no HTTP Range) and is capped at 32 MiB
-// server-side. Fine for images and PDFs; large videos need a future streaming
-// endpoint (tracked in the implementation plan).
 (function () {
   "use strict";
   const MVR = (window.MVR = window.MVR || {});
@@ -20,9 +19,12 @@
   const MIME = {
     jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png",
     gif: "image/gif", webp: "image/webp", bmp: "image/bmp",
-    heif: "image/heif", heic: "image/heic",
+    heif: "image/heif", heic: "image/heic", dcm: "application/dicom", dicom: "application/dicom",
     mp4: "video/mp4", mov: "video/quicktime", webm: "video/webm",
-    mkv: "video/x-matroska", m4v: "video/mp4",
+    mkv: "video/x-matroska", m4v: "video/mp4", avi: "video/x-msvideo",
+    wmv: "video/x-ms-wmv", flv: "video/x-flv", mpg: "video/mpeg",
+    mpeg: "video/mpeg", ts: "video/mp2t", m2ts: "video/mp2t", mts: "video/mp2t",
+    "3gp": "video/3gpp", ogv: "video/ogg",
     pdf: "application/pdf",
     yaml: "text/yaml", yml: "text/yaml", json: "application/json", txt: "text/plain",
   };
@@ -77,7 +79,17 @@
     return normalizeRoot(root.path);
   }
 
-  // /api/roots now returns named shares. The app uses virtual paths of the form
+  // /api/platform reports gateway display settings (theme/zoom)
+  async function platform() {
+    return reqJSON("GET", "api/platform").catch(() => ({}));
+  }
+
+  // /api/me reports current authenticated user info
+  async function me() {
+    return reqJSON("GET", "api/me").catch(() => ({}));
+  }
+
+  // /api/roots returns named shares. The app uses virtual paths of the form
   // /SHARE/subdir for every API call; older absolute-path gateways are tolerated
   // so local deployments are not forced to upgrade in lockstep.
   async function roots() {
@@ -118,7 +130,7 @@
     return URL.createObjectURL(blob);
   }
 
-  // --- mutating endpoints (used from Phase 2 onward) ---
+  // --- mutating endpoints ---
   async function writeText(path, text) {
     return reqJSON("PUT", "api/files/write" + q(path), text);
   }
@@ -129,5 +141,5 @@
     return reqJSON("DELETE", "api/files/delete" + q(path));
   }
 
-  MVR.api = { roots, list, readText, readBlob, objectURL, fileURL, thumbURL, writeText, mkdir, del, mimeFor };
+  MVR.api = { platform, me, roots, list, readText, readBlob, objectURL, fileURL, thumbURL, writeText, mkdir, del, mimeFor };
 })();

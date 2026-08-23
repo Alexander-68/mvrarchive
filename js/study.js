@@ -10,7 +10,7 @@
   const { api, path } = MVR;
 
   const IMAGE_EXT = new Set(["jpg", "jpeg", "png", "gif", "webp", "bmp", "heif", "heic"]);
-  const VIDEO_EXT = new Set(["mp4", "mov", "webm", "mkv", "m4v"]);
+  const VIDEO_EXT = new Set(["mp4", "mov", "webm", "mkv", "m4v", "avi", "wmv", "flv", "mpg", "mpeg", "ts", "m2ts", "mts", "3gp", "ogv"]);
   const META_NAMES = new Set(["study_info.yaml", "patient_info.json", "patient_info.csv", "patient_info.txt", "patient_info.yaml"]);
 
   const STAMP_RE = /^(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})(?:_(.*))?$/;
@@ -24,14 +24,14 @@
   function mediaKind(name) {
     if (META_NAMES.has(name.toLowerCase())) return null;
     const ext = path.extname(name);
-    if (IMAGE_EXT.has(ext)) return "image";
-    if (VIDEO_EXT.has(ext)) return "video";
-    if (ext === "pdf") return "pdf";
-    if (ext === "dcm") {
+    if (ext === "dcm" || ext === "dicom") {
       // DICOM can wrap either; disambiguate by the MVR filename prefix.
       const c = name[0] && name[0].toUpperCase();
       return c === "V" || c === "W" ? "video" : "image";
     }
+    if (IMAGE_EXT.has(ext)) return "image";
+    if (VIDEO_EXT.has(ext)) return "video";
+    if (ext === "pdf") return "pdf";
     return null;
   }
 
@@ -143,10 +143,13 @@
   }
 
   function newStudy(root, entry) {
+    const isRoot = entry.name === root || !entry.name;
+    const folderName = isRoot ? (path.basename(root) || root) : entry.name;
+    const p = isRoot ? root : path.join(root, entry.name);
     return {
       root,
-      folderName: entry.name,
-      path: path.join(root, entry.name),
+      folderName,
+      path: p,
       modTime: entry.mod_time ? Date.parse(entry.mod_time) : 0,
       hydrated: false,
       info: null,
@@ -154,6 +157,7 @@
       counters: { images: 0, videos: 0, pdfs: 0, size: 0 },
       thumbFile: null,
       marked: false,
+      isDirectRoot: isRoot,
     };
   }
 
@@ -165,7 +169,7 @@
       i.PatientFirstName, i.PatientLastName, i.AnimalName,
       i.AccessionNumber, formatDOB(i),
       formatDate(studyDate(study)),
-    ].filter(Boolean).join("  ").toLowerCase();
+    ].filter(Boolean).join(" \x01 ").toLowerCase();
   }
 
   function matches(study, query) {

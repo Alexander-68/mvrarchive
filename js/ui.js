@@ -1052,7 +1052,7 @@
     }
     if (m.kind === "video") {
       const v = document.createElement("video");
-      v.src = api.fileURL(m.path); v.controls = true; v.autoplay = true; v.playsInline = true;
+      v.src = api.fileURL(m.path); v.controls = true; v.autoplay = true; v.playsInline = true; v.loop = true;
       stage.appendChild(v);
       // Video zooms with the same wheel/pinch machinery as images; it starts fit
       // to the stage (CSS max-width/height) at 100%.

@@ -41,6 +41,8 @@
   let scrollDirection = "down"; // "down" | "up"
   let isScrolling = false;
   let scrollStopTimer = null;
+  let fieldTooltip = null;
+  let fieldTooltipTimer = null;
 
   function onScroll() {
     const currentY = window.scrollY || 0;
@@ -605,7 +607,7 @@
 
   function refreshStatusRight() {
     const sel = state.studies.filter((s) => s.marked).length;
-    $("#free-space").textContent = sel ? `${sel} selected` : state.root;
+    $("#free-space").textContent = sel ? `${sel} selected` : "";
   }
 
   // ---- archive focus cursor -------------------------------------------------
@@ -811,13 +813,14 @@
 
   function renderInfo(study) {
     const panel = $("#info-panel");
+    const body = panel.closest(".detail-body");
     panel.innerHTML = "";
-    panel.appendChild(el("h3", null, "Study information"));
+    panel.hidden = true;
+    body.classList.add("no-info");
     const info = study.info;
-    if (!info) {
-      panel.appendChild(el("p", "muted", "No metadata file (study_info.yaml) in this study."));
-      return;
-    }
+    if (!info) return;
+
+    panel.appendChild(el("h3", null, "Study information"));
 
     const used = new Set(["PatientFirstName", "PatientMiddleName", "PatientLastName",
       "PatientBirthYear", "PatientBirthMonth", "PatientBirthDay", "AnimalName", "AnatomicRegion"]);
@@ -841,12 +844,64 @@
       panel.appendChild(el("div", "info-section-title", "Additional"));
       for (const k of extra) panel.appendChild(infoRow(k, String(info[k])));
     }
+    panel.hidden = panel.childElementCount === 1;
+    body.classList.toggle("no-info", panel.hidden);
   }
   function infoRow(label, value) {
     const row = el("div", "info-row");
+    row.dataset.tooltip = `${label}: ${value}`;
+    row.setAttribute("aria-label", row.dataset.tooltip);
     row.appendChild(el("span", "k", label));
     row.appendChild(el("span", "v", value));
     return row;
+  }
+
+  function hideFieldTooltip() {
+    clearTimeout(fieldTooltipTimer);
+    fieldTooltipTimer = null;
+    if (fieldTooltip) fieldTooltip.remove();
+    fieldTooltip = null;
+  }
+  function showFieldTooltip(row) {
+    hideFieldTooltip();
+    const tip = el("div", "field-tooltip", row.dataset.tooltip);
+    tip.role = "tooltip";
+    document.body.appendChild(tip);
+    const rect = row.getBoundingClientRect();
+    const margin = 8;
+    const left = Math.max(margin, Math.min(rect.left, window.innerWidth - tip.offsetWidth - margin));
+    const offset = Math.max(12, rect.height * 0.8);
+    const top = Math.max(margin, rect.top - tip.offsetHeight - offset);
+    tip.style.left = `${left}px`;
+    tip.style.top = `${top}px`;
+    fieldTooltip = tip;
+  }
+  function setupFieldTooltips() {
+    document.addEventListener("pointerover", (e) => {
+      if (e.pointerType === "touch") return;
+      const row = e.target.closest && e.target.closest(".info-row[data-tooltip]");
+      if (!row || (e.relatedTarget && row.contains(e.relatedTarget))) return;
+      hideFieldTooltip();
+      fieldTooltipTimer = setTimeout(() => showFieldTooltip(row), 500);
+    });
+    document.addEventListener("pointerout", (e) => {
+      const row = e.target.closest && e.target.closest(".info-row[data-tooltip]");
+      if (row && (!e.relatedTarget || !row.contains(e.relatedTarget))) hideFieldTooltip();
+    });
+    document.addEventListener("touchstart", (e) => {
+      const row = e.target.closest && e.target.closest(".info-row[data-tooltip]");
+      if (!row) return;
+      hideFieldTooltip();
+      fieldTooltipTimer = setTimeout(() => showFieldTooltip(row), 500);
+    }, { passive: true });
+    document.addEventListener("touchend", hideFieldTooltip, { passive: true });
+    document.addEventListener("touchmove", hideFieldTooltip, { passive: true });
+    document.addEventListener("touchcancel", hideFieldTooltip, { passive: true });
+  }
+
+  function syncDetailStickyOffset() {
+    const topbar = $(".topbar");
+    if (topbar) document.documentElement.style.setProperty("--topbar-height", `${topbar.offsetHeight}px`);
   }
 
   // ---- selection ------------------------------------------------------------
@@ -1160,6 +1215,8 @@
     setupThemeBridge();
     await syncPlatform();
     await initUser();
+    syncDetailStickyOffset();
+    setupFieldTooltips();
 
     $("#btn-refresh").onclick = () => loadArchive(state.root);
     $("#btn-back").onclick = showArchive;
@@ -1190,6 +1247,7 @@
     const mgrid = $("#media-grid");
     mgrid.addEventListener("wheel", (e) => {
       if (state.view !== "study" || state.viewer.open) return;
+      if (!e.ctrlKey) return;
       e.preventDefault();
       zoomTiles(e.deltaY < 0 ? 24 : -24);
     }, { passive: false });
@@ -1207,6 +1265,7 @@
 
     // Re-flow the focus cursor and scheduler when the grid wraps to a new column count.
     window.addEventListener("resize", () => {
+      syncDetailStickyOffset();
       if (state.view === "archive") updateArchiveFocus();
       scanAndScheduleLazyLoads();
     });

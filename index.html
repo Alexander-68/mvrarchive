@@ -35,10 +35,14 @@
       </label>
       <div class="search">
         <img src="assets/icons/ic_search.svg" class="search-icon" alt="">
-        <input id="search" type="search" placeholder="Search studies…" autocomplete="off" spellcheck="false">
-        <button id="search-clear" class="iconbtn" title="Clear" hidden>✕</button>
+        <input id="search" type="text" placeholder="Search studies…" autocomplete="off" spellcheck="false">
+        <button id="search-clear" class="iconbtn" title="Clear search" aria-label="Clear search" hidden>✕</button>
       </div>
       <button id="btn-refresh" class="iconbtn" title="Refresh">⟳</button>
+      <div class="archive-status">
+        <span id="study-count" class="muted"></span>
+        <span id="free-space" class="muted"></span>
+      </div>
     </div>
 
     <div class="topbar-user">
@@ -51,10 +55,6 @@
 
   <!-- Archive: grid of Study cards -->
   <main id="view-archive" class="view">
-    <div class="status-bar">
-      <span id="study-count" class="muted"></span>
-      <span id="free-space" class="muted"></span>
-    </div>
     <div id="grid" class="grid"></div>
     <p id="grid-empty" class="empty" hidden>No studies found.</p>
   </main>

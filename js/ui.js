@@ -46,6 +46,7 @@
   let scrollDirection = "down"; // "down" | "up"
   let isScrolling = false;
   let scrollStopTimer = null;
+  let scanQueued = false;
   let cardZoomTimer = null;
   let fieldTooltip = null;
   let fieldTooltipTimer = null;
@@ -60,7 +61,10 @@
     lastScrollY = currentY;
     isScrolling = true;
 
-    scanAndScheduleLazyLoads();
+    if (!scanQueued) {
+      scanQueued = true;
+      requestAnimationFrame(() => { scanQueued = false; scanAndScheduleLazyLoads(); });
+    }
 
     clearTimeout(scrollStopTimer);
     scrollStopTimer = setTimeout(() => {
@@ -80,6 +84,7 @@
   function getElementZone(element) {
     if (!element || element.hidden) return 0;
     const rect = element.getBoundingClientRect();
+    if (!rect.width && !rect.height) return 0; // detached or in a hidden view
     const vh = window.innerHeight || document.documentElement.clientHeight || 800;
     const top = rect.top;
     const bottom = rect.bottom;
@@ -142,6 +147,8 @@
 
       cardQueue.shift();
       if (topStudy.hydrated || topStudy._loading) continue;
+      // Re-check at dispatch time: the user may have scrolled past it while queued.
+      if (!getElementZone(topStudy.cardEl)) continue;
 
       topStudy._loading = true;
       activeCardWorkers++;
@@ -216,6 +223,8 @@
 
       mediaQueue.shift();
       if (topItem.media._previewLoaded || topItem.media._previewLoading) continue;
+      // Re-check at dispatch time: the user may have scrolled past it while queued.
+      if (!getElementZone(topItem.media.tileEl)) continue;
 
       topItem.media._previewLoading = true;
       activeMediaWorkers++;

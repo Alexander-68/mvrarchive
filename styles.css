@@ -275,6 +275,22 @@ button.ghost { background: transparent; }
 .viewer-nav.next { right: .5rem; }
 .viewer-nav:hover { background: rgba(66,168,216,.5); }
 
+/* ---- DICOM tag dialog ------------------------------------------------------ */
+.viewer-left { display: flex; gap: .4rem; align-items: center; }
+.dicom-dialog {
+  width: min(900px, 92vw); max-height: 82vh; padding: 0; border-radius: var(--radius);
+  background: var(--surface-2); border: 1px solid var(--line); color: var(--text);
+}
+.dicom-dialog::backdrop { background: rgba(0,0,0,.6); }
+.dicom-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+  padding: .6rem 1rem; border-bottom: 1px solid var(--line);
+}
+.dicom-tags {
+  margin: 0; padding: .8rem 1rem; overflow: auto; max-height: calc(82vh - 3rem);
+  font-size: .8rem; line-height: 1.35; white-space: pre; tab-size: 4;
+}
+
 /* ---- toast ---------------------------------------------------------------- */
 .toast {
   position: fixed; bottom: 1.2rem; left: 50%; transform: translateX(-50%);

@@ -82,7 +82,10 @@
   <!-- Fullscreen media viewer -->
   <div id="viewer" class="viewer" hidden>
     <div class="viewer-top">
-      <button id="viewer-back" class="ghost">← Back</button>
+      <span class="viewer-left">
+        <button id="viewer-back" class="ghost">← Back</button>
+        <button id="viewer-info" class="ghost" title="DICOM tags" hidden>Info</button>
+      </span>
       <span id="viewer-name" class="viewer-name"></span>
       <button id="viewer-close" class="iconbtn" title="Close">✕</button>
     </div>
@@ -90,6 +93,14 @@
     <div id="viewer-stage" class="viewer-stage"></div>
     <button id="viewer-next" class="viewer-nav next" title="Next">›</button>
   </div>
+
+  <dialog id="dicom-dialog" class="dicom-dialog">
+    <div class="dicom-head">
+      <strong id="dicom-title"></strong>
+      <button id="dicom-close" class="iconbtn" title="Close">✕</button>
+    </div>
+    <pre id="dicom-tags" class="dicom-tags"></pre>
+  </dialog>
 
   <div id="toast" class="toast" hidden></div>
 

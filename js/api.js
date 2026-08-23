@@ -33,9 +33,10 @@
     return MIME[MVR.path.extname(name)] || "application/octet-stream";
   }
 
-  async function req(method, url, body) {
+  async function req(method, url, body, headers) {
     const opts = { method, headers: {} };
     if (body !== undefined) opts.body = body;
+    if (headers) Object.assign(opts.headers, headers);
     const res = await fetch(url, opts);
     if (res.status === 401) {
       location.href = "__login";
@@ -44,8 +45,8 @@
     return res;
   }
 
-  async function reqJSON(method, url, body) {
-    const res = await req(method, url, body);
+  async function reqJSON(method, url, body, headers) {
+    const res = await req(method, url, body, headers);
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || `${res.status} ${res.statusText}`);
     return data;
@@ -130,6 +131,15 @@
     return URL.createObjectURL(blob);
   }
 
+  // DICOM tags come from the gateway's DCMTK bridge (dcmdump); jail-marked
+  // "in:" arg keeps the path inside the share. Needs DCMTK on the host and a
+  // local (non-remote) share, else the call answers 503/415.
+  async function dicomDump(path) {
+    const d = await reqJSON("POST", "api/dcmtk/dcmdump", JSON.stringify({ args: ["in:" + path], timeoutSec: 60 }), { "Content-Type": "application/json" });
+    if (d.exitCode) throw new Error((d.stderr || "").trim() || `dcmdump exited ${d.exitCode}`);
+    return d.stdout || "";
+  }
+
   // --- mutating endpoints ---
   async function writeText(path, text) {
     return reqJSON("PUT", "api/files/write" + q(path), text);
@@ -141,5 +151,5 @@
     return reqJSON("DELETE", "api/files/delete" + q(path));
   }
 
-  MVR.api = { platform, me, roots, list, readText, readBlob, objectURL, fileURL, thumbURL, writeText, mkdir, del, mimeFor };
+  MVR.api = { platform, me, roots, list, readText, readBlob, objectURL, fileURL, thumbURL, dicomDump, writeText, mkdir, del, mimeFor };
 })();

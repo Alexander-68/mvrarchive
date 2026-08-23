@@ -1047,6 +1047,7 @@
     // 4096 px per side) for DICOM, so no w hint is sent.
     const ext = MVR.path.extname(m.name);
     const isDicom = ext === "dcm" || ext === "dicom";
+    $("#viewer-info").hidden = !isDicom;
     if (isDicom) return showImage(m, stage, api.thumbURL(m.path));
     if (m.kind === "image") return showImage(m, stage);
 
@@ -1094,6 +1095,19 @@
     state.viewer.img = img;
     applyZoom();                  // carry over zoom/pan
     if (oldImg) oldImg.remove();  // instant swap
+  }
+
+  async function showDicomTags() {
+    const m = state.viewer.media[state.viewer.index];
+    if (!m) return;
+    $("#dicom-title").textContent = m.name;
+    $("#dicom-tags").textContent = "Loading…";
+    $("#dicom-dialog").showModal();
+    try {
+      $("#dicom-tags").textContent = (await api.dicomDump(m.path)).trim() || "No tags returned.";
+    } catch (e) {
+      $("#dicom-tags").textContent = "Could not read DICOM tags: " + e.message;
+    }
   }
 
   // At 1x a video keeps its native controls, so pointer/touch drags are left
@@ -1163,6 +1177,7 @@
       return;
     }
 
+    if ($("#dicom-dialog").open) return; // dialog handles its own Esc
     if (state.viewer.open) {
       if (e.key === "ArrowLeft") { e.preventDefault(); step(-1); }
       else if (e.key === "ArrowRight") { e.preventDefault(); step(1); }
@@ -1294,6 +1309,8 @@
     $("#btn-prev-study").onclick = () => navStudy(-1);
     $("#btn-next-study").onclick = () => navStudy(1);
     $("#viewer-close").onclick = closeViewer;
+    $("#viewer-info").onclick = showDicomTags;
+    $("#dicom-close").onclick = () => $("#dicom-dialog").close();
     $("#viewer-back").onclick = closeViewer;
     $("#viewer-prev").onclick = () => step(-1);
     $("#viewer-next").onclick = () => step(1);

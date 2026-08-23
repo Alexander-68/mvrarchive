@@ -83,7 +83,10 @@ A visible **focus cursor** (blue outline) marks the current item.
   and swapped in over the current one **instantly** — no blank/dark flash and no
   fade animation. Everything should feel immediate.
 - Video and PDF play in the viewer (video streams with HTTP Range, so seeking
-  works). DICOM (`.dcm`) is not viewable yet (decoder planned).
+  works). DICOM (`.dcm`) opens as a still image rendered server-side by DCMTK
+  (the thumbnail endpoint, currently 640 px, middle frame for multiframe); it
+  zooms and pans like any image. Video-wrapped DICOM shows one frame, not
+  playback.
 
 ## Thumbnails & media loading
 

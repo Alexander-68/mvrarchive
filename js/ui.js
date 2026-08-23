@@ -1040,16 +1040,19 @@
     $("#viewer-prev").style.visibility = hasNav ? "" : "hidden";
     $("#viewer-next").style.visibility = hasNav ? "" : "hidden";
 
+    // DICOM is rendered server-side by DCMTK (thumbnail endpoint): the pixel
+    // data needs windowing/decompression a browser cannot do, and a multiframe
+    // instance shows its middle frame. Both image- and video-prefixed .dcm end
+    // up as one still. The server pins DICOM previews to 640 px today (the w
+    // hint is ignored on that path); raising it is an OmniGate-side change.
+    const ext = MVR.path.extname(m.name);
+    const isDicom = ext === "dcm" || ext === "dicom";
+    if (isDicom) return showImage(m, stage, api.thumbURL(m.path, 1600));
     if (m.kind === "image") return showImage(m, stage);
 
     // Heavy media: stream straight from the read URL (Range-capable), so video
     // seeks natively and PDFs render with their real content-type.
     clearStage();
-    const ext = MVR.path.extname(m.name);
-    if (ext === "dcm" || ext === "dicom") {
-      stage.appendChild(el("div", "msg", `DICOM files (${m.name}) are not viewable yet — a DICOM decoder is planned for a later phase.`));
-      return;
-    }
     if (m.kind === "video") {
       const v = document.createElement("video");
       v.src = api.fileURL(m.path); v.controls = true; v.autoplay = true; v.playsInline = true; v.loop = true;
@@ -1068,7 +1071,7 @@
   // showImage decodes the next image off-DOM, then swaps it in over the current
   // one instantly (no blank stage, no fade). A sequence token guards against
   // out-of-order loads during fast stepping; zoom/pan carry over.
-  async function showImage(m, stage) {
+  async function showImage(m, stage, url) {
     const seq = ++state.viewer.seq;
     const oldImg = state.viewer.img;
     let placeholder = null;
@@ -1077,7 +1080,7 @@
     const img = document.createElement("img");
     img.draggable = false;
     try {
-      await decodeImg(img, api.fileURL(m.path));
+      await decodeImg(img, url || api.fileURL(m.path));
     } catch (e) {
       if (seq === state.viewer.seq) { if (placeholder) placeholder.remove(); stage.appendChild(el("div", "msg", `Could not load ${m.name}`)); }
       return;

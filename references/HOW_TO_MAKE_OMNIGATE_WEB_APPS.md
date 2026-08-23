@@ -83,7 +83,7 @@ relative to app prefix (use `api/...` in browser URLs). `path` values are
 | `GET` | `/api/roots` | List available shares | Returns `{"roots":[{"name","writable"}]}` |
 | `GET` | `/api/files?path=` | List a directory | Returns `{"path","entries":[{name,is_dir,size,mod_time}]}` |
 | `GET` | `/api/files/read?path=` | Read a file | Streams; honours `Range` (seek/resume, in-browser video frames) |
-| `GET` | `/api/files/thumbnail?path=&w=` | JPEG thumbnail of an **image, video or DICOM file** | `w` defaults to 320, capped at 2048, never upscales; videos are fixed at 640 and need ffmpeg (else `415`); `.dcm`/`.dicom` previews are capped at 640 and need DCMTK (else `415`) |
+| `GET` | `/api/files/thumbnail?path=&w=` | JPEG thumbnail of an **image, video or DICOM file** | `w` defaults to 320, capped at 2048, never upscales; videos are fixed at 640 and need ffmpeg (else `415`); `.dcm`/`.dicom` previews come at source resolution, capped at 4096 px per side, and need DCMTK (else `415`) |
 | `PUT` | `/api/files/write?path=` | Write/create a file | Raw request body is the file content (≤ 32 MiB) |
 | `POST` | `/api/files/mkdir?path=` | Create a folder | Creates missing parents |
 | `DELETE` | `/api/files/delete?path=` | Delete a file or folder | Recursive; cannot delete a share root |
@@ -170,8 +170,13 @@ unknown share.
 Point an `<img>` at `/api/files/thumbnail?path=…` for images, videos and
 `.dcm` files — the server decodes JPEG/PNG/GIF itself, pulls video poster
 frames with ffmpeg (640 px, cached beside the video; the `w` parameter is
-ignored there) and renders DICOM previews through DCMTK's `dcmj2pnm` (640 px
-cap, same hidden-file cache).
+ignored there) and renders DICOM previews through DCMTK's `dcmj2pnm` (source
+resolution, 4096 px cap per side, same hidden-file cache).
+
+A DICOM preview is not a thumbnail: browsers cannot decode `.dcm` pixel data,
+so this endpoint is also how an app *views* the image full-screen — point the
+viewer at it, not at `/api/files/read`. Multiframe instances render their
+middle frame, so a video-wrapped `.dcm` shows one still, not playback.
 
 Video frames need ffmpeg on the host, DICOM previews need DCMTK, and both need
 the file on local disk; without the tool (or on a `remote` share) the request

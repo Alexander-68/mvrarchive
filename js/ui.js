@@ -1043,11 +1043,11 @@
     // DICOM is rendered server-side by DCMTK (thumbnail endpoint): the pixel
     // data needs windowing/decompression a browser cannot do, and a multiframe
     // instance shows its middle frame. Both image- and video-prefixed .dcm end
-    // up as one still. The server pins DICOM previews to 640 px today (the w
-    // hint is ignored on that path); raising it is an OmniGate-side change.
+    // up as one still. The endpoint returns the source resolution (bounded to
+    // 4096 px per side) for DICOM, so no w hint is sent.
     const ext = MVR.path.extname(m.name);
     const isDicom = ext === "dcm" || ext === "dicom";
-    if (isDicom) return showImage(m, stage, api.thumbURL(m.path, 1600));
+    if (isDicom) return showImage(m, stage, api.thumbURL(m.path));
     if (m.kind === "image") return showImage(m, stage);
 
     // Heavy media: stream straight from the read URL (Range-capable), so video

@@ -84,7 +84,8 @@ A visible **focus cursor** (blue outline) marks the current item.
   fade animation. Everything should feel immediate.
 - Video and PDF play in the viewer (video streams with HTTP Range, so seeking
   works). DICOM (`.dcm`) opens as a still image rendered server-side by DCMTK
-  (the thumbnail endpoint, currently 640 px, middle frame for multiframe); it
+  (the thumbnail endpoint, source resolution capped at 4096 px per side, middle
+  frame for multiframe); it
   zooms and pans like any image. Video-wrapped DICOM shows one frame, not
   playback.
 

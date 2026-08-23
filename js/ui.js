@@ -783,9 +783,13 @@
       m._previewLoaded = false;
       m._previewLoading = false;
 
-      // Single compact caption, e.g. "IMAGE, I0002.jpg".
-      tile.appendChild(el("span", "cap", `${m.kind.toUpperCase()}, ${m.name}`));
-      const ic = icon(m.kind === "video" ? "ic_video" : m.kind === "pdf" ? "ic_pdf" : "ic_image", "ic");
+      // Single compact caption: kind icon + file name.
+      const iconName = m.kind === "video" ? "ic_video" : m.kind === "pdf" ? "ic_pdf" : "ic_image";
+      const cap = el("span", "cap");
+      cap.appendChild(icon(iconName));
+      cap.appendChild(el("span", "cap-name", m.name));
+      tile.appendChild(cap);
+      const ic = icon(iconName, "ic");
       tile.appendChild(ic);
 
       const loadPreview = async () => {

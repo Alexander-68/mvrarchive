@@ -194,9 +194,11 @@ button.ghost { background: transparent; }
 .media-tile .cap {
   position: absolute; bottom: 0; left: 0; right: 0;
   font-size: .68rem; letter-spacing: .02em; color: var(--muted-2);
-  background: rgba(0,0,0,.6); padding: .22rem .45rem;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  background: rgba(0,0,0,.85); padding: .22rem .45rem;
+  display: flex; align-items: center; gap: .3rem;
 }
+.media-tile .cap img { width: 13px; height: 13px; flex: 0 0 auto; opacity: .85; }
+.media-tile .cap-name { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .media-tile.focused { outline: 3px solid var(--accent); outline-offset: -3px; }
 .media-tile.selected { border-color: var(--checkmark); }
 

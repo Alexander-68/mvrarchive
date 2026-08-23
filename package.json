@@ -1,7 +1,7 @@
 {
   "name": "mvrarchive",
   "version": "1.0.260823",
-  "description": "MVRarchive - OmniGate imaging study browser",
+  "description": "MVRarchive - imaging study browser",
   "scripts": {
     "build": "node build.js"
   }

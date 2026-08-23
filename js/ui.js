@@ -23,13 +23,18 @@
     focus: 0,            // index into visible studies
     current: null,       // study open in detail view
     mediaFocus: 0,       // index into current.media
+    cardSize: 300,       // archive card min width (px), Ctrl+wheel/pinch adjustable
     tileSize: 160,       // detail media-tile min width (px), wheel/pinch adjustable
+    cardPinch: null,     // active pinch gesture in archive grid
     pinch: null,         // active pinch gesture in the media grid
     viewer: { study: null, media: [], index: 0, open: false, img: null,
               scale: 1, tx: 0, ty: 0, drag: null, touch: null, seq: 0 },
   };
   const MIN_TILE_SIZE = 64;
   const MAX_TILE_SIZE = 440;
+  const MIN_CARD_SIZE = 180;
+  const MAX_CARD_SIZE = 640;
+  const QUAD_CARD_SIZE = 440;
   const MIN_VIEWER_IMAGE_WIDTH = 64;
   const MAX_VIEWER_SCALE = 8;
 
@@ -41,6 +46,7 @@
   let scrollDirection = "down"; // "down" | "up"
   let isScrolling = false;
   let scrollStopTimer = null;
+  let cardZoomTimer = null;
   let fieldTooltip = null;
   let fieldTooltipTimer = null;
 
@@ -54,9 +60,7 @@
     lastScrollY = currentY;
     isScrolling = true;
 
-    // While fast-scrolling, prioritize whatever is currently visible on screen
-    pumpCardQueue();
-    pumpMediaQueue();
+    scanAndScheduleLazyLoads();
 
     clearTimeout(scrollStopTimer);
     scrollStopTimer = setTimeout(() => {
@@ -108,14 +112,14 @@
   const cardQueue = []; // array of studies
   let cardVisibleObserver = null;
 
-  function enqueueCard(study, priority) {
+  function enqueueCard(study, priority, pump = true) {
     if (study.hydrated || study._loading) return;
     study._priority = Math.min(study._priority || 99, priority);
     if (!cardQueue.includes(study)) {
       cardQueue.push(study);
     }
     sortCardQueue();
-    pumpCardQueue();
+    if (pump) pumpCardQueue();
   }
 
   function sortCardQueue() {
@@ -184,14 +188,14 @@
   const mediaQueue = []; // array of media items { media, loadFn, priority }
   let mediaVisibleObserver = null;
 
-  function enqueueMedia(item, priority) {
+  function enqueueMedia(item, priority, pump = true) {
     if (item.media._previewLoaded || item.media._previewLoading) return;
     item.priority = Math.min(item.priority || 99, priority);
     if (!mediaQueue.includes(item)) {
       mediaQueue.push(item);
     }
     sortMediaQueue();
-    pumpMediaQueue();
+    if (pump) pumpMediaQueue();
   }
 
   function sortMediaQueue() {
@@ -255,24 +259,30 @@
   // Priority 2 (1.5x ahead), and Priority 3 (1.5x behind)
   function scanAndScheduleLazyLoads() {
     if (state.view === "archive") {
+      // Drop stale preloads, then queue current viewport before nearby cards.
+      cardQueue.length = 0;
       const vis = visibleStudies();
       for (const study of vis) {
         if (study.hydrated || study._loading || !study.cardEl) continue;
         const zone = getElementZone(study.cardEl);
         if (zone > 0) {
           study._priority = zone;
-          enqueueCard(study, zone);
+          enqueueCard(study, zone, false);
         }
       }
+      pumpCardQueue();
     } else if (state.view === "study" && state.current) {
+      // Drop stale preloads, then queue current viewport before nearby tiles.
+      mediaQueue.length = 0;
       for (const m of state.current.media) {
         if (m._previewLoaded || m._previewLoading || !m.tileEl) continue;
         const zone = getElementZone(m.tileEl);
         if (zone > 0 && m.tileEl._queueItem) {
           m.tileEl._queueItem.priority = zone;
-          enqueueMedia(m.tileEl._queueItem, zone);
+          enqueueMedia(m.tileEl._queueItem, zone, false);
         }
       }
+      pumpMediaQueue();
     }
   }
 
@@ -424,6 +434,7 @@
     showArchive();
     const grid = $("#grid");
     grid.innerHTML = "";
+    applyCardSize();
     $("#grid-empty").hidden = true;
     $("#study-count").textContent = "Loading…";
     refreshStatusRight();
@@ -539,9 +550,32 @@
     const dob = S.formatDOB(i);
     if (dob) sub.appendChild(subItem("ic_birthday", dob));
 
-    // Thumbnail: server JPEG of the first image/video; falls back to browser-side
-    // video frame capture if server lacks video thumbnail codecs.
-    const thumb = card.querySelector(".card-thumb");
+    fillCardThumb(study);
+  }
+
+  // Large cards show four evenly spaced stills; smaller cards keep one preview.
+  function fillCardThumb(study) {
+    const thumb = study.cardEl && study.cardEl.querySelector(".card-thumb");
+    if (!thumb) return;
+    thumb.innerHTML = "";
+    thumb.classList.add("loading");
+    thumb.classList.remove("quad");
+    const images = study.media.filter((m) => m.kind === "image");
+    if (state.cardSize >= QUAD_CARD_SIZE && images.length >= 4) {
+      thumb.classList.add("quad");
+      let remaining = 4;
+      for (let i = 0; i < 4; i++) {
+        const img = el("img", "thumb-img");
+        const done = () => { if (!--remaining) thumb.classList.remove("loading"); };
+        img.onload = done;
+        img.onerror = () => { img.remove(); done(); };
+        img.src = api.thumbURL(images[Math.round(i * (images.length - 1) / 3)].path, 400);
+        thumb.appendChild(img);
+      }
+      return;
+    }
+
+    // Server JPEG of first image/video; video falls back to browser frame capture.
     const targetFile = study.thumbFile || study.media.find((m) => m.kind === "video");
 
     if (targetFile) {
@@ -585,9 +619,6 @@
       study.cardEl.hidden = !show;
       if (show) {
         visible++;
-        if (q && !study.hydrated) {
-          enqueueCard(study, 1);
-        }
       }
     }
     $("#search-clear").hidden = !q;
@@ -706,11 +737,26 @@
   }
 
   function applyTileSize() {
-    $("#media-grid").style.gridTemplateColumns = `repeat(auto-fill, minmax(${state.tileSize}px, 1fr))`;
+    $("#media-grid").style.gridTemplateColumns = `repeat(auto-fill, minmax(min(100%, ${state.tileSize}px), ${state.tileSize}px))`;
   }
   function zoomTiles(deltaPx) {
     state.tileSize = Math.max(MIN_TILE_SIZE, Math.min(MAX_TILE_SIZE, state.tileSize + deltaPx));
     applyTileSize();
+  }
+  function applyCardSize() {
+    $("#grid").style.gridTemplateColumns = `repeat(auto-fill, minmax(min(100%, ${state.cardSize}px), ${state.cardSize}px))`;
+  }
+  function zoomCards(deltaPx) {
+    const wasQuad = state.cardSize >= QUAD_CARD_SIZE;
+    state.cardSize = Math.max(MIN_CARD_SIZE, Math.min(MAX_CARD_SIZE, state.cardSize + deltaPx));
+    applyCardSize();
+    if (wasQuad !== (state.cardSize >= QUAD_CARD_SIZE)) {
+      state.studies.forEach((study) => { if (study.hydrated && study.cardEl) fillCardThumb(study); });
+    }
+  }
+  function scheduleCardScan() {
+    clearTimeout(cardZoomTimer);
+    cardZoomTimer = setTimeout(scanAndScheduleLazyLoads, 130);
   }
 
   function renderMedia(study) {
@@ -1244,6 +1290,25 @@
     stage.addEventListener("touchend", onViewerTouchEnd, { passive: true });
 
     // Study detail: wheel / pinch resizes the preview tiles.
+    const grid = $("#grid");
+    grid.addEventListener("wheel", (e) => {
+      if (state.view !== "archive" || !e.ctrlKey) return;
+      e.preventDefault();
+      zoomCards(e.deltaY < 0 ? 24 : -24);
+      scheduleCardScan();
+    }, { passive: false });
+    grid.addEventListener("touchstart", (e) => {
+      if (state.view !== "archive" || e.touches.length !== 2) return;
+      state.cardPinch = { dist: pinchDist(e.touches), size: state.cardSize };
+    }, { passive: true });
+    grid.addEventListener("touchmove", (e) => {
+      if (!state.cardPinch || e.touches.length !== 2) return;
+      const ratio = pinchDist(e.touches) / state.cardPinch.dist;
+      state.cardSize = Math.max(MIN_CARD_SIZE, Math.min(MAX_CARD_SIZE, Math.round(state.cardPinch.size * ratio)));
+      applyCardSize();
+    }, { passive: true });
+    grid.addEventListener("touchend", () => { state.cardPinch = null; scheduleCardScan(); });
+
     const mgrid = $("#media-grid");
     mgrid.addEventListener("wheel", (e) => {
       if (state.view !== "study" || state.viewer.open) return;

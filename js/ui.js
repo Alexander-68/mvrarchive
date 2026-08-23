@@ -1018,7 +1018,7 @@
       parts.push(study.folderName);
     }
     parts.push(m.name);
-    if (m.kind === "image") {
+    if (m.kind === "image" || m.kind === "video") {
       if (m.width && m.height) parts.push(`${m.width} x ${m.height}`);
       parts.push(`zoom ${Math.round(state.viewer.scale * 100)}%`);
     }
@@ -1054,6 +1054,11 @@
       const v = document.createElement("video");
       v.src = api.fileURL(m.path); v.controls = true; v.autoplay = true; v.playsInline = true;
       stage.appendChild(v);
+      // Video zooms with the same wheel/pinch machinery as images; it starts fit
+      // to the stage (CSS max-width/height) at 100%.
+      state.viewer.img = v;
+      resetZoomVars();
+      applyZoom();
     } else if (m.kind === "pdf") {
       const f = document.createElement("iframe");
       f.src = api.fileURL(m.path); stage.appendChild(f);
@@ -1088,6 +1093,12 @@
     if (oldImg) oldImg.remove();  // instant swap
   }
 
+  // At 1x a video keeps its native controls, so pointer/touch drags are left
+  // alone; once zoomed, dragging pans it like an image.
+  function zoomTargetGrabs() {
+    const v = state.viewer;
+    return !!v.img && (v.img.tagName !== "VIDEO" || v.scale !== 1);
+  }
   function applyZoom() {
     const v = state.viewer;
     if (!v.img) return;
@@ -1123,7 +1134,7 @@
   function onPointerDown(e) {
     const v = state.viewer;
     if (e.pointerType === "touch") return; // touch handled by touch events below
-    if (!v.open || !v.img) return;
+    if (!v.open || !zoomTargetGrabs()) return;
     e.preventDefault();
     v.drag = { x: e.clientX, y: e.clientY, tx: v.tx, ty: v.ty };
     v.img.classList.add("dragging");
@@ -1196,9 +1207,11 @@
       e.preventDefault();
     } else if (e.touches.length === 1) {
       const t = e.touches[0];
-      if (v.img) {
+      if (zoomTargetGrabs()) {
         v.touch = { mode: "pan", x: t.clientX, y: t.clientY, tx: v.tx, ty: v.ty };
         e.preventDefault();
+      } else if (v.img) {
+        v.touch = null;   // let native video controls take the tap
       } else {
         v.touch = { mode: "swipe", x: t.clientX };
       }

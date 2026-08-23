@@ -144,7 +144,7 @@ button.ghost { background: transparent; }
 .card.marked { border-color: var(--checkmark); }
 
 .card-thumb {
-  position: relative; aspect-ratio: 408 / 240; background: var(--thumb-bg);
+  position: relative; aspect-ratio: 408 / 280; background: var(--thumb-bg);
   display: grid; place-items: center; overflow: hidden;
 }
 .card-thumb img { width: 100%; height: 100%; object-fit: cover; }
@@ -161,13 +161,13 @@ button.ghost { background: transparent; }
 /* keyboard focus cursor */
 .card.focused { outline: 3px solid var(--accent); outline-offset: -3px; }
 
-.card-body { padding: .65rem .8rem .8rem; display: flex; flex-direction: column; gap: .35rem; }
-.card-title { font-weight: 700; font-size: 1rem; line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.card-date { color: var(--muted-2); font-size: .8rem; }
-.card-meta { display: flex; gap: .9rem; color: var(--muted); font-size: .82rem; margin-top: .15rem; }
+.card-body { padding: .4rem .6rem .45rem; display: flex; flex-direction: column; gap: .12rem; }
+.card-title { font-weight: 700; font-size: .95rem; line-height: 1.15; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.card-date { color: var(--muted-2); font-size: .78rem; line-height: 1.2; }
+.card-meta { display: flex; gap: .9rem; color: var(--muted); font-size: .8rem; line-height: 1.2; }
 .card-meta .mi { display: flex; align-items: center; gap: .3rem; }
 .card-meta .mi img { width: 15px; height: 15px; opacity: .85; }
-.card-sub { display: flex; gap: .9rem; color: var(--muted); font-size: .78rem; flex-wrap: wrap; }
+.card-sub { display: flex; gap: .9rem; color: var(--muted); font-size: .76rem; line-height: 1.2; flex-wrap: wrap; }
 .card-sub .si { display: flex; align-items: center; gap: .3rem; }
 .card-sub .si img { width: 13px; height: 13px; opacity: .8; }
 

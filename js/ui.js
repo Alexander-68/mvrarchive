@@ -1166,6 +1166,7 @@
     $("#btn-prev-study").onclick = () => navStudy(-1);
     $("#btn-next-study").onclick = () => navStudy(1);
     $("#viewer-close").onclick = closeViewer;
+    $("#viewer-back").onclick = closeViewer;
     $("#viewer-prev").onclick = () => step(-1);
     $("#viewer-next").onclick = () => step(1);
 

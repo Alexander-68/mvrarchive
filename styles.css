@@ -201,13 +201,17 @@ button.ghost { background: transparent; }
 .info-row .v { color: var(--text); word-break: break-word; }
 .info-section-title { margin: 1rem 0 .4rem; font-size: .72rem; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
 
-/* ---- viewer overlay (remains dark for high contrast medical imaging) ------- */
+/* ---- viewer overlay -------------------------------------------------------- */
 .viewer {
-  position: fixed; inset: 0; z-index: 50; background: rgba(0,0,0,.92);
+  position: fixed; inset: 0; z-index: 50; background: var(--bg);
   display: flex; flex-direction: column;
 }
-.viewer-top { display: flex; align-items: center; justify-content: space-between; padding: .6rem 1rem; }
-.viewer-name { color: var(--muted-2); font-size: .9rem; }
+.viewer-top {
+  display: grid; grid-template-columns: auto 1fr auto; align-items: center;
+  gap: 1rem; padding: .6rem 1rem; background: var(--surface-2);
+  border-bottom: 1px solid var(--line);
+}
+.viewer-name { color: var(--text); font-size: .9rem; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .viewer-stage { position: relative; flex: 1; display: grid; place-items: center; padding: 0 1rem 1rem; min-height: 0; z-index: 1; }
 .viewer-stage img, .viewer-stage video { max-width: 100%; max-height: 100%; object-fit: contain; }
 /* Images are absolutely centred so the next one can be decoded and layered over
@@ -218,11 +222,11 @@ button.ghost { background: transparent; }
 }
 .viewer-stage img.zoomed { cursor: grab; }
 .viewer-stage img.dragging { cursor: grabbing; }
-.viewer-stage iframe, .viewer-stage embed { width: 90%; height: 100%; border: 0; background: #fff; }
+.viewer-stage iframe, .viewer-stage embed { width: 90%; height: 100%; border: 0; background: var(--surface-2); }
 .viewer-stage .msg { color: var(--muted); text-align: center; max-width: 420px; }
 .viewer-nav {
   position: absolute; top: 50%; transform: translateY(-50%);
-  background: rgba(0,0,0,.4); border: 0; color: #fff; font-size: 2.5rem;
+  background: var(--surface); border: 1px solid var(--line); color: var(--text); font-size: 2.5rem;
   width: 56px; height: 88px; cursor: pointer; border-radius: var(--radius);
   z-index: 3; pointer-events: auto;
 }

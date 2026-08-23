@@ -137,7 +137,9 @@
   async function dicomDump(path) {
     const d = await reqJSON("POST", "api/dcmtk/dcmdump", JSON.stringify({ args: ["in:" + path], timeoutSec: 60 }), { "Content-Type": "application/json" });
     if (d.exitCode) throw new Error((d.stderr || "").trim() || `dcmdump exited ${d.exitCode}`);
-    return d.stdout || "";
+    // Pixel-data items are megabytes of hex preview lines; the PixelSequence
+    // header line above them already says how many frames there are.
+    return (d.stdout || "").split(/\r?\n/).filter((l) => !/^\s*\(fffe,e000\)/.test(l)).join("\n");
   }
 
   // --- mutating endpoints ---

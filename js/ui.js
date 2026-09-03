@@ -681,7 +681,7 @@
       : state.studies.flatMap((s) => s.media.filter((m) => m.selected).map((m) => ({ path: m.path, name: m.name, from: s.path })));
     if (!items.length) return;
     state.clip = { kind: studies.length ? "study" : "file", items };
-    clearSelection();
+    deselectAll();
   }
   function pasteBlocker() {
     const clip = state.clip;
@@ -1039,6 +1039,9 @@
   }
   function clearSelection() {
     state.clip = null;
+    deselectAll();
+  }
+  function deselectAll() {
     for (const s of state.studies) {
       if (s.marked) setStudySelected(s, false);
       for (const m of s.media) if (m.selected) setMediaSelected(m, false);

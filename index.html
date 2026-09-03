@@ -36,15 +36,15 @@
       <div class="search">
         <img src="assets/icons/ic_search.svg" class="search-icon" alt="">
         <input id="search" type="text" placeholder="Search studies…" autocomplete="off" spellcheck="false">
-        <button id="search-clear" class="iconbtn" title="Clear search" aria-label="Clear search" hidden>✕</button>
+        <button id="search-clear" class="iconbtn" data-tip="Clear search" aria-label="Clear search" hidden>✕</button>
       </div>
-      <button id="btn-refresh" class="iconbtn" title="Refresh">⟳</button>
+      <button id="btn-refresh" class="iconbtn" data-tip="Refresh">⟳</button>
       <div class="archive-status">
         <span id="study-count" class="muted"></span>
         <span id="free-space" class="muted"></span>
-        <button id="sel-copy" class="iconbtn" title="Copy selection (Ctrl+C)" aria-label="Copy selection" hidden>⧉</button>
-        <button id="sel-paste" class="iconbtn" title="Paste (Ctrl+V)" aria-label="Paste" hidden>📋</button>
-        <button id="sel-clear" class="iconbtn" title="Clear" aria-label="Clear" hidden>✕</button>
+        <button id="sel-copy" class="iconbtn" data-tip="Copy selection (Ctrl+C)" aria-label="Copy selection" hidden>⧉</button>
+        <button id="sel-paste" class="iconbtn" data-tip="Paste (Ctrl+V)" aria-label="Paste" hidden>&#x1F4CB;&#xFE0E;</button>
+        <button id="sel-clear" class="iconbtn" data-tip="Clear" aria-label="Clear" hidden>✕</button>
       </div>
     </div>
 
@@ -69,8 +69,8 @@
       <h2 id="detail-title" class="detail-title"></h2>
       <span id="detail-sub" class="muted"></span>
       <div class="detail-nav">
-        <button id="btn-prev-study" class="ghost" title="Previous study">‹ Prev</button>
-        <button id="btn-next-study" class="ghost" title="Next study">Next ›</button>
+        <button id="btn-prev-study" class="ghost" data-tip="Previous study">‹ Prev</button>
+        <button id="btn-next-study" class="ghost" data-tip="Next study">Next ›</button>
       </div>
     </div>
     <div class="detail-body">
@@ -87,20 +87,20 @@
     <div class="viewer-top">
       <span class="viewer-left">
         <button id="viewer-back" class="ghost">← Back</button>
-        <button id="viewer-info" class="ghost" title="DICOM tags" hidden>Info</button>
+        <button id="viewer-info" class="ghost" data-tip="DICOM tags" hidden>Info</button>
       </span>
       <span id="viewer-name" class="viewer-name"></span>
-      <button id="viewer-close" class="iconbtn" title="Close">✕</button>
+      <button id="viewer-close" class="iconbtn" data-tip="Close">✕</button>
     </div>
-    <button id="viewer-prev" class="viewer-nav prev" title="Previous">‹</button>
+    <button id="viewer-prev" class="viewer-nav prev" data-tip="Previous">‹</button>
     <div id="viewer-stage" class="viewer-stage"></div>
-    <button id="viewer-next" class="viewer-nav next" title="Next">›</button>
+    <button id="viewer-next" class="viewer-nav next" data-tip="Next">›</button>
   </div>
 
   <dialog id="dicom-dialog" class="dicom-dialog">
     <div class="dicom-head">
       <strong id="dicom-title"></strong>
-      <button id="dicom-close" class="iconbtn" title="Close">✕</button>
+      <button id="dicom-close" class="iconbtn" data-tip="Close">✕</button>
     </div>
     <pre id="dicom-tags" class="dicom-tags"></pre>
   </dialog>

@@ -87,7 +87,23 @@ html[data-theme="light"] .card-sub .si img {
 .brand-text .app-version { font-size: .68rem; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: .02em; }
 .archive-status { display: flex; align-items: center; gap: .6rem; white-space: nowrap; font-size: .82rem; }
 #sel-copy, #sel-paste, #sel-clear { font-size: .9rem; padding: .1rem .35rem; }
+#sel-paste { font-family: "Segoe UI Symbol", "Noto Sans Symbols2", sans-serif; } /* monochrome clipboard, matches ⧉ */
 #sel-paste:disabled { opacity: .35; cursor: not-allowed; }
+
+/* Tooltips: data-tip replaces title so they follow the theme instead of the OS. */
+[data-tip] { position: relative; }
+[data-tip]::after {
+  content: attr(data-tip); position: absolute; left: 50%; top: calc(100% + 6px);
+  transform: translateX(-50%) translateY(-4px); white-space: nowrap;
+  background: var(--text); color: var(--bg); font-size: .75rem; font-weight: 500;
+  padding: .3rem .55rem; border-radius: 6px; box-shadow: 0 4px 14px var(--card-shadow);
+  opacity: 0; pointer-events: none; z-index: 50; transition: opacity .12s ease .3s, transform .12s ease .3s;
+}
+[data-tip]:hover::after, [data-tip]:focus-visible::after { opacity: 1; transform: translateX(-50%) translateY(0); }
+/* Screen-edge buttons anchor the tip to their inner edge instead of centring. */
+#search-clear::after, #viewer-close::after, #dicom-close::after, #viewer-next::after { left: auto; right: 0; transform: translateY(-4px); }
+#viewer-prev::after { left: 0; transform: translateY(-4px); }
+#search-clear:hover::after, #viewer-close:hover::after, #dicom-close:hover::after, #viewer-next:hover::after, #viewer-prev:hover::after { transform: translateY(0); }
 .topbar-controls { display: flex; align-items: center; gap: .75rem; flex: 1; }
 .topbar-user { display: flex; align-items: center; gap: .75rem; margin-left: auto; }
 .user-name { font-size: .88rem; font-weight: 600; color: var(--text); }

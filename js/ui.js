@@ -667,7 +667,7 @@
     if (clip) {
       const why = pasteBlocker();
       $("#sel-paste").disabled = !!why;
-      $("#sel-paste").title = why || "Paste (Ctrl+V)";
+      $("#sel-paste").dataset.tip = why || "Paste (Ctrl+V)";
     }
   }
 

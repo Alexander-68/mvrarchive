@@ -569,48 +569,47 @@
     thumb.innerHTML = "";
     thumb.classList.add("loading");
     thumb.classList.remove("quad");
-    const images = study.media.filter((m) => m.kind === "image");
-    if (state.cardSize >= QUAD_CARD_SIZE && images.length >= 4) {
+    const visual = study.media.filter((m) => m.kind === "image" || m.kind === "video");
+    if (state.cardSize >= QUAD_CARD_SIZE && visual.length >= 4) {
       thumb.classList.add("quad");
       let remaining = 4;
       for (let i = 0; i < 4; i++) {
         const img = el("img", "thumb-img");
-        const done = () => { if (!--remaining) thumb.classList.remove("loading"); };
-        img.onload = done;
-        img.onerror = () => { img.remove(); done(); };
-        img.src = api.thumbURL(images[Math.round(i * (images.length - 1) / 3)].path, 400);
         thumb.appendChild(img);
+        loadThumbImg(img, visual[Math.round(i * (visual.length - 1) / 3)], (ok) => {
+          if (!ok) img.remove();
+          if (!--remaining) thumb.classList.remove("loading");
+        });
       }
       return;
     }
 
-    // Server JPEG of first image/video; video falls back to browser frame capture.
-    const targetFile = study.thumbFile || study.media.find((m) => m.kind === "video");
-
-    if (targetFile) {
-      const img = el("img", "thumb-img");
-      img.onload = () => { thumb.classList.remove("loading"); thumb.appendChild(img); };
-      img.onerror = () => {
-        if (targetFile.kind === "video") {
-          captureVideoFrame(api.fileURL(targetFile.path), 400).then((data) => {
-            if (data) {
-              img.onerror = () => { thumb.classList.remove("loading"); addPlaceholder(thumb); };
-              img.src = data;
-            } else {
-              thumb.classList.remove("loading");
-              addPlaceholder(thumb);
-            }
-          });
-        } else {
-          thumb.classList.remove("loading");
-          addPlaceholder(thumb);
-        }
-      };
-      img.src = api.thumbURL(targetFile.path, 400);
-    } else {
+    const targetFile = study.thumbFile || visual[0];
+    if (!targetFile) {
       thumb.classList.remove("loading");
       addPlaceholder(thumb);
+      return;
     }
+    const img = el("img", "thumb-img");
+    loadThumbImg(img, targetFile, (ok) => {
+      thumb.classList.remove("loading");
+      if (ok) thumb.appendChild(img); else addPlaceholder(thumb);
+    });
+  }
+
+  // loadThumbImg loads the server JPEG for an image/video; a video whose
+  // thumbnail the server can't make falls back to browser frame capture.
+  function loadThumbImg(img, file, done) {
+    img.onload = () => done(true);
+    img.onerror = () => {
+      if (file.kind !== "video") return done(false);
+      captureVideoFrame(api.fileURL(file.path), 400).then((data) => {
+        if (!data) return done(false);
+        img.onerror = () => done(false);
+        img.src = data;
+      });
+    };
+    img.src = api.thumbURL(file.path, 400);
   }
 
   function addPlaceholder(thumb) {

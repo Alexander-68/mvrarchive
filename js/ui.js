@@ -8,6 +8,8 @@
 //   Esc     go out  (viewer -> detail, detail -> archive; in archive clears search)
 //   Space   select / unselect the focused item (Ctrl+click does the same)
 //   Ctrl+A  select all visible studies / all files of the open study
+//   Ctrl+C  copy the selection; Ctrl+V pastes studies into the open storage
+//           or files into the open study (never into the same place)
 //   Mouse   click to focus+open; wheel zooms the viewer image; drag pans it
 //   Touch   tap to open; swipe left/right in the viewer changes file
 (function () {
@@ -22,6 +24,7 @@
     studies: [],         // current root's studies (sorted newest-first)
     query: "",
     focus: 0,            // index into visible studies
+    clip: null,          // { kind: "study" | "file", items: [{ path, name, from }] } after Copy
     current: null,       // study open in detail view
     mediaFocus: 0,       // index into current.media
     cardSize: 300,       // archive card min width (px), Ctrl+wheel/pinch adjustable
@@ -654,8 +657,59 @@
       for (const m of s.media) if (m.selected) files++;
     }
     const sel = studies || files;
-    $("#free-space").textContent = sel ? `${sel} ${studies ? "stud" + (sel === 1 ? "y" : "ies") : "file" + (sel === 1 ? "" : "s")} selected` : "";
-    $("#sel-clear").hidden = !sel;
+    const noun = (kind, n) => kind === "study" ? (n === 1 ? "study" : "studies") : (n === 1 ? "file" : "files");
+    const clip = state.clip;
+    $("#free-space").textContent = clip ? `${clip.items.length} ${noun(clip.kind, clip.items.length)} copied`
+      : sel ? `${sel} ${noun(studies ? "study" : "file", sel)} selected` : "";
+    $("#sel-copy").hidden = !sel || !!clip;
+    $("#sel-paste").hidden = !clip;
+    $("#sel-clear").hidden = !sel && !clip;
+    if (clip) {
+      const why = pasteBlocker();
+      $("#sel-paste").disabled = !!why;
+      $("#sel-paste").title = why || "Paste (Ctrl+V)";
+    }
+  }
+
+  // ---- copy / paste ---------------------------------------------------------
+  // Studies paste into another storage, files into another study. The same
+  // place is refused rather than making "(copy)" duplicates.
+  function copySelection() {
+    const studies = state.studies.filter((s) => s.marked);
+    const items = studies.length
+      ? studies.map((s) => ({ path: s.path, name: s.folderName, from: s.root }))
+      : state.studies.flatMap((s) => s.media.filter((m) => m.selected).map((m) => ({ path: m.path, name: m.name, from: s.path })));
+    if (!items.length) return;
+    state.clip = { kind: studies.length ? "study" : "file", items };
+    clearSelection();
+  }
+  function pasteBlocker() {
+    const clip = state.clip;
+    if (!clip) return "Nothing copied";
+    if (clip.kind === "study") {
+      if (state.view !== "archive") return "Studies paste into a storage: go back to the study list";
+      if (clip.items.some((i) => i.from === state.root)) return "Already in this storage: switch to another one";
+    } else {
+      if (state.view !== "study" || !state.current) return "Files paste into a study: open one";
+      if (clip.items.some((i) => i.from === state.current.path)) return "Already in this study: open another one";
+    }
+    return "";
+  }
+  async function pasteClip() {
+    const why = pasteBlocker();
+    if (why) { toast(why, true); return; }
+    const clip = state.clip;
+    const dest = clip.kind === "study" ? state.root : state.current.path;
+    let ok = 0;
+    const errors = [];
+    for (const it of clip.items) {
+      toast(`Copying ${it.name}… (${ok + 1}/${clip.items.length})`);
+      try { await api.copy(it.path, MVR.path.join(dest, it.name)); ok++; }
+      catch (e) { errors.push(`${it.name}: ${e.message}`); }
+    }
+    toast(errors.length ? `Copied ${ok}, failed ${errors.length}: ${errors[0]}` : `Copied ${ok} ${ok === 1 ? "item" : "items"}`, !!errors.length);
+    if (clip.kind === "study") loadArchive(state.root);
+    else { state.current.hydrated = false; openStudy(state.current); }
   }
 
   // ---- archive focus cursor -------------------------------------------------
@@ -984,6 +1038,7 @@
     if (m.tileEl) m.tileEl.classList.toggle("selected", on);
   }
   function clearSelection() {
+    state.clip = null;
     for (const s of state.studies) {
       if (s.marked) setStudySelected(s, false);
       for (const m of s.media) if (m.selected) setMediaSelected(m, false);
@@ -1231,6 +1286,8 @@
     const arrows = { ArrowLeft: "left", ArrowRight: "right", ArrowUp: "up", ArrowDown: "down" };
 
     if (e.ctrlKey && (e.key === "a" || e.key === "A")) { e.preventDefault(); selectAll(); return; }
+    if (e.ctrlKey && (e.key === "c" || e.key === "C")) { copySelection(); return; }
+    if (e.ctrlKey && (e.key === "v" || e.key === "V")) { pasteClip(); return; }
 
     if (state.view === "archive") {
       if (arrows[e.key]) { e.preventDefault(); moveArchiveFocus(arrows[e.key]); }
@@ -1361,6 +1418,8 @@
 
     const search = $("#search");
     search.oninput = () => { state.query = search.value; applySearch(); };
+    $("#sel-copy").onclick = copySelection;
+    $("#sel-paste").onclick = pasteClip;
     $("#sel-clear").onclick = clearSelection;
     $("#search-clear").onclick = () => { search.value = ""; state.query = ""; applySearch(); search.focus(); };
 

@@ -12,6 +12,7 @@
 //   PUT    /api/files/write?path=      -> { path, bytes }
 //   POST   /api/files/mkdir?path=      -> { path, created }
 //   DELETE /api/files/delete?path=     -> { path, deleted }
+//   POST   /api/files/copy?src=&dst=   -> { src, dst, copied }   (recursive, across shares)
 (function () {
   "use strict";
   const MVR = (window.MVR = window.MVR || {});
@@ -152,6 +153,10 @@
   async function del(path) {
     return reqJSON("DELETE", "api/files/delete" + q(path));
   }
+  // copy duplicates src as dst (dst is the new entry's full path; 409 if it exists).
+  async function copy(src, dst) {
+    return reqJSON("POST", `api/files/copy?src=${encodeURIComponent(src)}&dst=${encodeURIComponent(dst)}`);
+  }
 
-  MVR.api = { platform, me, roots, list, readText, readBlob, objectURL, fileURL, thumbURL, dicomDump, writeText, mkdir, del, mimeFor };
+  MVR.api = { platform, me, roots, list, readText, readBlob, objectURL, fileURL, thumbURL, dicomDump, writeText, mkdir, del, copy, mimeFor };
 })();

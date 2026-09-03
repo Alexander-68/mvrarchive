@@ -86,7 +86,8 @@ html[data-theme="light"] .card-sub .si img {
 .brand-text strong { font-size: 1.05rem; }
 .brand-text .app-version { font-size: .68rem; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: .02em; }
 .archive-status { display: flex; align-items: center; gap: .6rem; white-space: nowrap; font-size: .82rem; }
-#sel-clear { font-size: .9rem; padding: .1rem .35rem; }
+#sel-copy, #sel-paste, #sel-clear { font-size: .9rem; padding: .1rem .35rem; }
+#sel-paste:disabled { opacity: .35; cursor: not-allowed; }
 .topbar-controls { display: flex; align-items: center; gap: .75rem; flex: 1; }
 .topbar-user { display: flex; align-items: center; gap: .75rem; margin-left: auto; }
 .user-name { font-size: .88rem; font-weight: 600; color: var(--text); }

@@ -6,7 +6,8 @@
 //           viewer: left/right = prev/next file)
 //   Enter   go in   (focused study -> detail, focused media -> viewer)
 //   Esc     go out  (viewer -> detail, detail -> archive; in archive clears search)
-//   Space   select / unselect the focused item
+//   Space   select / unselect the focused item (Ctrl+click does the same)
+//   Ctrl+A  select all visible studies / all files of the open study
 //   Mouse   click to focus+open; wheel zooms the viewer image; drag pans it
 //   Touch   tap to open; swipe left/right in the viewer changes file
 (function () {
@@ -428,6 +429,7 @@
     $("#view-study").hidden = true;
     $("#view-archive").hidden = false;
     state.current = null;
+    refreshStatusRight();
     updateArchiveFocus();
     scanAndScheduleLazyLoads();
   }
@@ -520,7 +522,7 @@
         <div class="card-meta"></div>
         <div class="card-sub"></div>
       </div>`;
-    card.onclick = () => { setArchiveFocus(visibleStudies().indexOf(study)); openStudy(study); };
+    card.onclick = (e) => { setArchiveFocus(visibleStudies().indexOf(study)); if (e.ctrlKey) toggleSelectArchive(); else openStudy(study); };
     return card;
   }
 
@@ -645,8 +647,11 @@
   }
 
   function refreshStatusRight() {
-    const sel = state.studies.filter((s) => s.marked).length;
+    const items = state.view === "study" && state.current ? state.current.media : state.studies;
+    const key = state.view === "study" ? "selected" : "marked";
+    const sel = items.filter((x) => x[key]).length;
     $("#free-space").textContent = sel ? `${sel} selected` : "";
+    $("#sel-clear").hidden = !sel;
   }
 
   // ---- archive focus cursor -------------------------------------------------
@@ -738,6 +743,7 @@
     $("#detail-sub").textContent = bits.filter(Boolean).join(" · ");
 
     state.mediaFocus = 0;
+    refreshStatusRight();
     renderMedia(study);
     renderInfo(study);
     updateMediaFocus();
@@ -827,7 +833,8 @@
         enqueueMedia(queueItem, 1);
       }
 
-      tile.onclick = () => { setMediaFocus(idx); openViewer(study, idx); };
+      if (m.selected) tile.classList.add("selected");
+      tile.onclick = (e) => { setMediaFocus(idx); if (e.ctrlKey) toggleSelectMedia(); else openViewer(study, idx); };
       grid.appendChild(tile);
     });
 
@@ -963,19 +970,47 @@
   }
 
   // ---- selection ------------------------------------------------------------
+  // Study and file selections are mutually exclusive: picking one kind clears the other.
+  function setStudySelected(s, on) {
+    s.marked = on;
+    if (s.cardEl) s.cardEl.classList.toggle("marked", on);
+  }
+  function setMediaSelected(m, on) {
+    m.selected = on;
+    if (m.tileEl) m.tileEl.classList.toggle("selected", on);
+  }
+  function clearSelection() {
+    for (const s of state.studies) {
+      if (s.marked) setStudySelected(s, false);
+      for (const m of s.media) if (m.selected) setMediaSelected(m, false);
+    }
+    refreshStatusRight();
+  }
   function toggleSelectArchive() {
-    const vis = visibleStudies();
-    const s = vis[state.focus];
+    const s = visibleStudies()[state.focus];
     if (!s) return;
-    s.marked = !s.marked;
-    s.cardEl.classList.toggle("marked", s.marked);
+    const on = !s.marked;
+    if (on) for (const st of state.studies) for (const m of st.media) if (m.selected) setMediaSelected(m, false);
+    setStudySelected(s, on);
     refreshStatusRight();
   }
   function toggleSelectMedia() {
     const m = state.current && state.current.media[state.mediaFocus];
-    if (!m || !m.tileEl) return;
-    m.selected = !m.selected;
-    m.tileEl.classList.toggle("selected", m.selected);
+    if (!m) return;
+    const on = !m.selected;
+    if (on) for (const st of state.studies) if (st.marked) setStudySelected(st, false);
+    setMediaSelected(m, on);
+    refreshStatusRight();
+  }
+  function selectAll() {
+    if (state.view === "archive") {
+      for (const st of state.studies) for (const m of st.media) if (m.selected) setMediaSelected(m, false);
+      for (const s of visibleStudies()) setStudySelected(s, true);
+    } else if (state.current) {
+      for (const st of state.studies) if (st.marked) setStudySelected(st, false);
+      for (const m of state.current.media) setMediaSelected(m, true);
+    }
+    refreshStatusRight();
   }
 
   // ---- media viewer (zoom / pan / swipe) ------------------------------------
@@ -1191,6 +1226,8 @@
 
     const arrows = { ArrowLeft: "left", ArrowRight: "right", ArrowUp: "up", ArrowDown: "down" };
 
+    if (e.ctrlKey && (e.key === "a" || e.key === "A")) { e.preventDefault(); selectAll(); return; }
+
     if (state.view === "archive") {
       if (arrows[e.key]) { e.preventDefault(); moveArchiveFocus(arrows[e.key]); }
       else if (e.key === "Enter") { const s = visibleStudies()[state.focus]; if (s) openStudy(s); }
@@ -1320,6 +1357,7 @@
 
     const search = $("#search");
     search.oninput = () => { state.query = search.value; applySearch(); };
+    $("#sel-clear").onclick = clearSelection;
     $("#search-clear").onclick = () => { search.value = ""; state.query = ""; applySearch(); search.focus(); };
 
     document.addEventListener("keydown", onKeydown);

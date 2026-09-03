@@ -647,10 +647,14 @@
   }
 
   function refreshStatusRight() {
-    const items = state.view === "study" && state.current ? state.current.media : state.studies;
-    const key = state.view === "study" ? "selected" : "marked";
-    const sel = items.filter((x) => x[key]).length;
-    $("#free-space").textContent = sel ? `${sel} selected` : "";
+    // Selections are exclusive (studies or files), so at most one term is non-zero.
+    let studies = 0, files = 0;
+    for (const s of state.studies) {
+      if (s.marked) studies++;
+      for (const m of s.media) if (m.selected) files++;
+    }
+    const sel = studies || files;
+    $("#free-space").textContent = sel ? `${sel} ${studies ? "stud" + (sel === 1 ? "y" : "ies") : "file" + (sel === 1 ? "" : "s")} selected` : "";
     $("#sel-clear").hidden = !sel;
   }
 

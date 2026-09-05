@@ -141,6 +141,14 @@
   }
 
   function pumpCardQueue() {
+    // While a search is active, hidden unhydrated cards never enter the viewport,
+    // so their metadata would never load and matches would stay missing:
+    // keep hydrating every remaining study in the background (lowest priority).
+    if (!cardQueue.length && state.query) {
+      for (const s of state.studies) {
+        if (!s.hydrated && !s._loading && s.cardEl) enqueueCard(s, 4, false);
+      }
+    }
     if (!cardQueue.length) return;
 
     // If currently scrolling fast, only process priority 1 (visible) items
@@ -157,7 +165,7 @@
       cardQueue.shift();
       if (topStudy.hydrated || topStudy._loading) continue;
       // Re-check at dispatch time: the user may have scrolled past it while queued.
-      if (!getElementZone(topStudy.cardEl)) continue;
+      if (!state.query && !getElementZone(topStudy.cardEl)) continue;
 
       topStudy._loading = true;
       activeCardWorkers++;
@@ -702,12 +710,14 @@
     $("#search-clear").hidden = !q;
     if (q) {
       $("#grid-empty").hidden = visible > 0;
-      $("#study-count").textContent = `${visible} of ${state.studies.length} match “${q}”`;
+      const pending = state.studies.filter((s) => !s.hydrated).length;
+      $("#study-count").textContent = `${visible} of ${state.studies.length} match “${q}”` + (pending ? ` · ${pending} still loading…` : "");
     } else {
       $("#grid-empty").hidden = state.studies.length > 0;
       $("#study-count").textContent = `${state.studies.length} stud${state.studies.length === 1 ? "y" : "ies"}`;
     }
     refreshStatusRight();
+    if (q) pumpCardQueue();
     if (state.view === "archive") {
       updateArchiveFocus();
       scanAndScheduleLazyLoads();

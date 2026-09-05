@@ -99,14 +99,17 @@
     return study.modTime ? new Date(study.modTime) : null;
   }
 
+  // Metadata lives in study_info.yaml (patient_info.yaml on older recorders),
+  // with patient_info.json as the fallback when no YAML is present.
   async function loadInfo(studyPath, entries) {
     const names = new Set(entries.filter((e) => !e.is_dir).map((e) => e.name.toLowerCase()));
-    if (names.has("study_info.yaml")) {
+    for (const yaml of ["study_info.yaml", "patient_info.yaml"]) {
+      if (!names.has(yaml)) continue;
       try {
-        const text = await api.readText(path.join(studyPath, "study_info.yaml"));
+        const text = await api.readText(path.join(studyPath, yaml));
         const obj = MVR.yaml.parse(text);
         if (obj && Object.keys(obj).length) return obj;
-      } catch (e) { /* fall through to JSON */ }
+      } catch (e) { /* fall through */ }
     }
     if (names.has("patient_info.json")) {
       try {
@@ -223,9 +226,56 @@
     }
   }
 
+  // ---- Send to PACS ----------------------------------------------------------
+  const PACS_EXT = new Set(["jpg", "jpeg", "bmp", "dcm", "dicom"]);
+  function pacsSendable(name) { return PACS_EXT.has(path.extname(name)); }
+
+  // UUID-derived UID (DICOM PS3.5 B.2): "2.25." + 128-bit random as decimal.
+  function genUID() {
+    const b = crypto.getRandomValues(new Uint8Array(16));
+    let n = 0n;
+    for (const x of b) n = (n << 8n) | BigInt(x);
+    return "2.25." + n.toString();
+  }
+
+  // dicomTags maps study metadata onto the DICOM tags a C-STORE should carry.
+  // The gateway never invents patient identity, so PatientName / PatientID always
+  // get a value; StudyInstanceUID is generated once per study and kept for the
+  // session so repeated sends land in the same PACS study.
+  function dicomTags(study) {
+    const i = study.info || {};
+    const t = {};
+    const human = [i.PatientLastName, i.PatientFirstName, i.PatientMiddleName].map((v) => v || "").join("^").replace(/\^+$/, "");
+    t.PatientName = String(i.AnimalName || human || displayName(study));
+    t.PatientID = String(i.StudyID || (parseStampName(study.folderName) || {}).studyId || study.folderName);
+    const dob = formatDOB(i);
+    if (dob.length === 10) t.PatientBirthDate = dob.replace(/-/g, "");
+    const sex = String(i.PatientGender || "").toUpperCase()[0];
+    if (sex && "MFO".includes(sex)) t.PatientSex = sex;
+    const d = studyDate(study);
+    if (d && !isNaN(d)) {
+      t.StudyDate = `${d.getFullYear()}${pad2(d.getMonth() + 1)}${pad2(d.getDate())}`;
+      t.StudyTime = `${pad2(d.getHours())}${pad2(d.getMinutes())}${pad2(d.getSeconds())}`;
+    }
+    const map = {
+      AccessionNumber: "AccessionNumber", InstitutionName: "InstitutionName",
+      StudyDescription: "RequestedProcedureDescription",
+      ReferringPhysicianName: "ReferringPhysician", PerformingPhysicianName: "PerformingPhysician",
+      ResponsiblePerson: "ResponsiblePerson", PatientSpeciesDescription: "SpeciesDescription",
+      PatientBreedDescription: "BreedCode",
+    };
+    for (const [tag, key] of Object.entries(map)) {
+      const v = i[key];
+      if (v !== null && v !== undefined && typeof v !== "object" && String(v).trim()) t[tag] = String(v).trim();
+    }
+    if (!study.sendUID) study.sendUID = i.StudyInstanceUID || genUID();
+    t.StudyInstanceUID = study.sendUID;
+    return t;
+  }
+
   MVR.study = {
     isStudyFolder, mediaKind, parseStampName, newStudy, hydrate,
     displayName, studyDate, fullName, formatDOB, formatDate, fmtSize,
-    matches, FIELD_GROUPS, KNOWN_KEYS, fieldValue,
+    matches, FIELD_GROUPS, KNOWN_KEYS, fieldValue, pacsSendable, dicomTags,
   };
 })();

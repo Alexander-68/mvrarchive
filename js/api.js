@@ -13,6 +13,8 @@
 //   POST   /api/files/mkdir?path=      -> { path, created }
 //   DELETE /api/files/delete?path=     -> { path, deleted }
 //   POST   /api/files/copy?src=&dst=   -> { src, dst, copied }   (recursive, across shares)
+//   GET    /api/pacs                   -> { servers: [{ name, host, port, aet }], callingAET }
+//   POST   /api/pacs/{name}/send       -> { ok, wrapped } | 502 { error, exitCode, output }
 (function () {
   "use strict";
   const MVR = (window.MVR = window.MVR || {});
@@ -158,5 +160,18 @@
     return reqJSON("POST", `api/files/copy?src=${encodeURIComponent(src)}&dst=${encodeURIComponent(dst)}`);
   }
 
-  MVR.api = { platform, me, roots, list, readText, readBlob, objectURL, fileURL, thumbURL, dicomDump, writeText, mkdir, del, copy, mimeFor };
+  // --- PACS (DICOM C-STORE via the gateway) ---
+  async function pacs() {
+    const d = await reqJSON("GET", "api/pacs").catch(() => ({}));
+    return d.servers || [];
+  }
+  // pacsSend ships one JPEG/BMP/DICOM file to the named server with the given tags.
+  async function pacsSend(name, path, tags) {
+    const res = await req("POST", `api/pacs/${encodeURIComponent(name)}/send`, JSON.stringify({ path, tags }), { "Content-Type": "application/json" });
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error((d.output || "").trim() || d.error || `${res.status} ${res.statusText}`);
+    return d;
+  }
+
+  MVR.api = { platform, me, roots, list, readText, readBlob, objectURL, fileURL, thumbURL, dicomDump, writeText, mkdir, del, copy, pacs, pacsSend, mimeFor };
 })();

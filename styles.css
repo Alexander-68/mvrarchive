@@ -328,6 +328,15 @@ button.ghost { background: transparent; }
   font-size: .95rem; line-height: 1.4; white-space: pre; tab-size: 4;
 }
 
+.modal { width: min(520px, 92vw); }
+.modal-body { padding: .8rem 1rem; overflow: auto; flex: 1; min-height: 0; line-height: 1.5; }
+.modal-body ul { margin: .4rem 0 0; padding-left: 1.2rem; }
+.modal-body select { width: 100%; margin-top: .4rem; }
+.modal-body .progress { margin-top: .6rem; font-weight: 600; }
+.modal-body .errors { margin-top: .4rem; color: var(--error); white-space: pre-wrap; }
+.modal-foot { display: flex; justify-content: flex-end; gap: .6rem; padding: .6rem 1rem; border-top: 1px solid var(--line); }
+button.danger { background: var(--error); color: #fff; border-color: transparent; font-weight: 600; }
+
 /* ---- toast ---------------------------------------------------------------- */
 /* Sits under the copy/paste buttons in the top bar, where the eye already is. */
 .toast {

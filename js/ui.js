@@ -10,6 +10,7 @@
 //   Ctrl+A  select all visible studies / all files of the open study
 //   Ctrl+C  copy the selection; Ctrl+V pastes studies into the open storage
 //           or files into the open study (never into the same place)
+//   Delete  delete the selection (after a confirm dialog; gateway soft-deletes)
 //   Mouse   click to focus+open; wheel zooms the viewer image; drag pans it
 //   Touch   tap to open; swipe left/right in the viewer changes file
 (function () {
@@ -25,6 +26,7 @@
     query: "",
     focus: 0,            // index into visible studies
     clip: null,          // { kind: "study" | "file", items: [{ path, name, from }] } after Copy
+    pacs: [],            // PACS servers from /api/pacs; Send to PACS shows when non-empty
     current: null,       // study open in detail view
     mediaFocus: 0,       // index into current.media
     cardSize: 300,       // archive card min width (px), Ctrl+wheel/pinch adjustable
@@ -669,6 +671,8 @@
     if (sel) parts.push(`${sel} ${noun(studies ? "study" : "file", sel)} selected`);
     $("#free-space").textContent = parts.join(" · ");
     $("#sel-copy").hidden = !sel;
+    $("#sel-delete").hidden = !sel;
+    $("#sel-pacs").hidden = !sel || !state.pacs.length;
     $("#sel-paste").hidden = !clip;
     $("#sel-clear").hidden = !sel && !clip;
     if (clip) {
@@ -682,13 +686,17 @@
   // Studies paste into another storage, files into another study. The same
   // place is refused rather than making "(copy)" duplicates. Copying with a
   // clipboard already present appends to it; Ctrl+click on a green item removes it.
-  function copySelection() {
+  // selectedItems returns the current selection as { kind, items }, where each
+  // item is { path, name, from, study } (from = the container it was picked in).
+  function selectedItems() {
     const studies = state.studies.filter((s) => s.marked);
-    const items = studies.length
-      ? studies.map((s) => ({ path: s.path, name: s.folderName, from: s.root }))
-      : state.studies.flatMap((s) => s.media.filter((m) => m.selected).map((m) => ({ path: m.path, name: m.name, from: s.path })));
+    if (studies.length) return { kind: "study", items: studies.map((s) => ({ path: s.path, name: s.folderName, from: s.root, study: s })) };
+    const items = state.studies.flatMap((s) => s.media.filter((m) => m.selected).map((m) => ({ path: m.path, name: m.name, from: s.path, study: s })));
+    return { kind: "file", items };
+  }
+  function copySelection() {
+    const { kind, items } = selectedItems();
     if (!items.length) return;
-    const kind = studies.length ? "study" : "file";
     const clip = state.clip;
     if (clip && clip.kind !== kind) { toast(`Clipboard holds ${clip.kind === "study" ? "studies" : "files"}: clear it first`, true); return; }
     const fresh = clip ? items.filter((i) => !isCopied(i.path)) : items;
@@ -739,6 +747,103 @@
     toast(errors.length ? `Copied ${ok}, failed ${errors.length}: ${errors[0]}` : `Copied ${ok} ${ok === 1 ? "item" : "items"}`, !!errors.length);
     if (clip.kind === "study") loadArchive(state.root);
     else { state.current.hydrated = false; openStudy(state.current); }
+  }
+
+  // ---- modal (delete confirm / PACS send) ------------------------------------
+  // One <dialog> for both flows. onOk runs with a `run` token; closing the
+  // dialog (Cancel/x) during work sets run.cancel so a loop stops early.
+  // run.finish() swaps the buttons to a single Close once work is done.
+  function openModal(title, bodyEl, okLabel, okClass, onOk) {
+    const dlg = $("#modal"), ok = $("#modal-ok"), cancel = $("#modal-cancel");
+    $("#modal-title").textContent = title;
+    const body = $("#modal-body"); body.innerHTML = ""; body.appendChild(bodyEl);
+    ok.textContent = okLabel; ok.className = okClass; ok.hidden = false; ok.disabled = false;
+    cancel.textContent = "Cancel";
+    const run = { cancel: false, finish() { ok.hidden = true; cancel.textContent = "Close"; } };
+    ok.onclick = () => { ok.disabled = true; onOk(run); };
+    dlg.onclose = () => { run.cancel = true; };
+    dlg.showModal();
+    return run;
+  }
+  function firstNames(items) {
+    const ul = el("ul");
+    for (const it of items.slice(0, 3)) ul.appendChild(el("li", null, it.name));
+    if (items.length > 3) ul.appendChild(el("li", "muted", `... and ${items.length - 3} more`));
+    return ul;
+  }
+  const plural = (n, one, many) => `${n} ${n === 1 ? one : (many || one + "s")}`;
+
+  async function hydrateAll(items) {
+    await Promise.all(items.map((it) => it.study.hydrated ? null : S.hydrate(it.study).then(() => fillCard(it.study))));
+  }
+  // After files or studies vanish, reload what showed them.
+  function reloadAfter(kind, items) {
+    if (kind === "study") { loadArchive(state.root); return; }
+    const touched = new Set(items.map((it) => it.study));
+    for (const st of touched) {
+      st.hydrated = false;
+      if (st !== state.current) S.hydrate(st).then(() => fillCard(st)).catch(() => {});
+    }
+    if (state.current && touched.has(state.current)) openStudy(state.current);
+  }
+
+  async function deleteSelection() {
+    const { kind, items } = selectedItems();
+    if (!items.length) return;
+    const body = el("div");
+    if (kind === "study") {
+      await hydrateAll(items);
+      const files = items.reduce((n, it) => n + it.study.media.length, 0);
+      body.appendChild(el("div", null, `${plural(items.length, "folder")}, ${plural(files, "file")}`));
+    } else {
+      body.appendChild(el("div", null, plural(items.length, "file")));
+    }
+    body.appendChild(firstNames(items));
+    openModal("Delete", body, "Delete", "danger", async (run) => {
+      const prog = el("div", "progress"); body.appendChild(prog);
+      let ok = 0; const errors = [];
+      for (const it of items) {
+        if (run.cancel) break;
+        prog.textContent = `Deleting ${it.name}... (${ok + 1}/${items.length})`;
+        try { await api.del(it.path); ok++; } catch (e) { errors.push(`${it.name}: ${e.message}`); }
+      }
+      $("#modal").close();
+      deselectAll();
+      toast(errors.length ? `Deleted ${ok}, failed ${errors.length}: ${errors[0]}` : `Deleted ${plural(ok, "item")}`, !!errors.length);
+      reloadAfter(kind, items);
+    });
+  }
+
+  async function sendToPacs() {
+    const { kind, items } = selectedItems();
+    if (!items.length || !state.pacs.length) return;
+    if (kind === "study") await hydrateAll(items);
+    const all = kind === "study"
+      ? items.flatMap((it) => it.study.media.map((m) => ({ path: m.path, name: m.name, study: it.study })))
+      : items;
+    const files = all.filter((f) => S.pacsSendable(f.name));
+    const skipped = all.length - files.length;
+    const body = el("div");
+    const sel = el("select");
+    for (const p of state.pacs) { const o = el("option", null, `${p.name} (${p.aet}@${p.host}:${p.port})`); o.value = p.name; sel.appendChild(o); }
+    body.appendChild(el("div", null, "PACS server"));
+    body.appendChild(sel);
+    body.appendChild(el("div", null, `${plural(files.length, "file")} to send` + (skipped ? ` (${skipped} skipped: only JPEG, BMP and DICOM can be sent)` : "")));
+    body.appendChild(firstNames(files));
+    openModal("Send to PACS", body, "Send", "primary", async (run) => {
+      sel.disabled = true;
+      const prog = el("div", "progress"); body.appendChild(prog);
+      const errBox = el("div", "errors"); body.appendChild(errBox);
+      let ok = 0; const errors = [];
+      for (const f of files) {
+        if (run.cancel) break;
+        prog.textContent = `Sending ${f.name}... (${ok + errors.length + 1}/${files.length})`;
+        try { await api.pacsSend(sel.value, f.path, S.dicomTags(f.study)); ok++; }
+        catch (e) { errors.push(`${f.name}: ${e.message}`); errBox.textContent = errors.join("\n"); }
+      }
+      prog.textContent = run.cancel ? `Cancelled after ${ok} sent` : `Sent ${ok} of ${files.length}` + (errors.length ? `, ${errors.length} failed` : "");
+      run.finish();
+    });
   }
 
   // ---- archive focus cursor -------------------------------------------------
@@ -1329,7 +1434,7 @@
       return;
     }
 
-    if ($("#dicom-dialog").open) return; // dialog handles its own Esc
+    if (document.querySelector("dialog[open]")) return; // dialogs handle their own Esc
     if (state.viewer.open) {
       if (e.key === "ArrowLeft") { e.preventDefault(); step(-1); }
       else if (e.key === "ArrowRight") { e.preventDefault(); step(1); }
@@ -1345,6 +1450,7 @@
     if (e.ctrlKey && (e.key === "a" || e.key === "A")) { e.preventDefault(); selectAll(); return; }
     if (e.ctrlKey && (e.key === "c" || e.key === "C")) { copySelection(); return; }
     if (e.ctrlKey && (e.key === "v" || e.key === "V")) { pasteClip(); return; }
+    if (e.key === "Delete") { deleteSelection(); return; }
 
     if (state.view === "archive") {
       if (arrows[e.key]) { e.preventDefault(); moveArchiveFocus(arrows[e.key]); }
@@ -1479,6 +1585,9 @@
     $("#sel-copy").onclick = copySelection;
     $("#sel-paste").onclick = pasteClip;
     $("#sel-clear").onclick = clearSelection;
+    $("#sel-delete").onclick = deleteSelection;
+    $("#sel-pacs").onclick = sendToPacs;
+    $("#modal-close").onclick = $("#modal-cancel").onclick = () => $("#modal").close();
     $("#search-clear").onclick = () => { search.value = ""; state.query = ""; applySearch(); search.focus(); };
 
     document.addEventListener("keydown", onKeydown);
@@ -1543,7 +1652,8 @@
     sel.onchange = () => loadArchive(sel.value);
 
     try {
-      const roots = await api.roots();
+      const [roots, pacs] = await Promise.all([api.roots(), api.pacs()]);
+      state.pacs = pacs;
       if (!roots.length) { toast("No storage roots are configured.", true); return; }
       sel.innerHTML = "";
       for (const r of roots) {

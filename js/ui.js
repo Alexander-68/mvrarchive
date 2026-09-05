@@ -819,7 +819,9 @@
 
     if (!study.hydrated) {
       $("#detail-sub").textContent = "Loading…";
-      try { await S.hydrate(study); } catch (e) { toast(e.message, true); }
+      // Fill the card too: the lazy scheduler skips hydrated studies, so a card
+      // hydrated here (Prev/Next into an unseen study) would otherwise stay blank.
+      try { await S.hydrate(study); fillCard(study); } catch (e) { toast(e.message, true); }
     }
     const c = study.counters;
     const bits = [];

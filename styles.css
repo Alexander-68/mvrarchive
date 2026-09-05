@@ -87,7 +87,7 @@ html[data-theme="light"] .card-sub .si img {
 .brand-text { display: flex; flex-direction: column; line-height: 1.15; }
 .brand-text strong { font-size: 1.05rem; }
 .brand-text .app-version { font-size: .68rem; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: .02em; }
-.archive-status { display: flex; align-items: center; gap: .6rem; white-space: nowrap; font-size: .82rem; }
+.archive-status { position: relative; display: flex; align-items: center; gap: .6rem; white-space: nowrap; font-size: .82rem; }
 #sel-copy, #sel-paste, #sel-clear { font-size: .9rem; padding: .1rem .35rem; }
 #sel-paste svg { display: block; }
 #sel-paste:disabled { opacity: .35; cursor: not-allowed; }
@@ -322,10 +322,12 @@ button.ghost { background: transparent; }
 }
 
 /* ---- toast ---------------------------------------------------------------- */
+/* Sits under the copy/paste buttons in the top bar, where the eye already is. */
 .toast {
-  position: fixed; bottom: 1.2rem; left: 50%; transform: translateX(-50%);
-  background: var(--surface-2); border: 1px solid var(--line); color: var(--text);
+  position: absolute; top: calc(100% + .7rem); right: 0;
+  background: var(--surface-2); border: 2px solid var(--accent); color: var(--text);
+  font-size: .9rem; font-weight: 600;
   padding: .6rem 1rem; border-radius: 10px; box-shadow: 0 8px 24px var(--card-shadow);
-  max-width: 80vw; z-index: 60;
+  max-width: 60vw; white-space: normal; z-index: 60;
 }
-.toast.error { border-color: var(--error); color: #fecaca; }
+.toast.error { border-color: var(--error); color: var(--text); }

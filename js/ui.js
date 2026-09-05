@@ -823,6 +823,7 @@
     if (dt) bits.push(dt);
     bits.push(`${c.images} image${c.images === 1 ? "" : "s"}`, `${c.videos} video${c.videos === 1 ? "" : "s"}`);
     if (c.pdfs) bits.push(`${c.pdfs} report${c.pdfs === 1 ? "" : "s"}`);
+    if (c.size) bits.push(S.fmtSize(c.size));
     $("#detail-sub").textContent = bits.filter(Boolean).join(" · ");
 
     state.mediaFocus = 0;
@@ -1147,6 +1148,7 @@
       parts.push(study.folderName);
     }
     parts.push(m.name);
+    if (m.size) parts.push(S.fmtSize(m.size));
     if (m.kind === "image" || m.kind === "video") {
       if (m.width && m.height) parts.push(`${m.width} x ${m.height}`);
       parts.push(`zoom ${Math.round(state.viewer.scale * 100)}%`);

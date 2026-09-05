@@ -139,8 +139,10 @@
       if (kind === "image") images++;
       else if (kind === "video") videos++;
       else if (kind === "pdf") pdfs++;
-      media.push({ name, kind, size: e.size, path: path.join(study.path, e.name) });
+      media.push({ name, kind, size: e.size, path: path.join(study.path, e.name), deletedAt: e.deleted_at ? Date.parse(e.deleted_at) : 0 });
     }
+    // A live study in deleted mode reports its most recent file deletion.
+    if (!study.trashed) study.deletedAt = media.reduce((t, m) => Math.max(t, m.deletedAt || 0), 0);
     media.sort((a, b) => a.name.localeCompare(b.name));
     study.media = media;
     study.counters = { images, videos, pdfs, size };
@@ -167,6 +169,7 @@
       marked: false,
       isDirectRoot: isRoot,
       trashed: false,
+      deletedAt: 0,        // epoch ms of the folder's (or latest file's) deletion; 0 when live
     };
   }
 
@@ -176,6 +179,7 @@
     const s = newStudy(root, { name: entry.name, mod_time: entry.deleted_at || entry.mod_time });
     s.folderName = entry.original_name || entry.name;
     s.trashed = true;
+    s.deletedAt = entry.deleted_at ? Date.parse(entry.deleted_at) : 0;
     return s;
   }
 

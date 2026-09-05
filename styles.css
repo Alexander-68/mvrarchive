@@ -166,6 +166,7 @@ button.toggle[aria-pressed="true"] { border-color: var(--error); color: var(--er
 .card.copied { border: 5px solid var(--copied); }
 .card.marked { border: 5px solid var(--checkmark); }
 .card.trashed { border-style: dashed; }
+.card-sub .deleted-at { color: var(--error); }
 
 .card-thumb {
   position: relative; aspect-ratio: 408 / 280; background: var(--thumb-bg);

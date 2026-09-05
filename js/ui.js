@@ -473,9 +473,7 @@
       return;
     }
 
-    const folders = entries
-      .filter((e) => e.is_dir && S.isStudyFolder(e.name))
-      .sort((a, b) => (Date.parse(b.mod_time) || 0) - (Date.parse(a.mod_time) || 0));
+    const folders = entries.filter((e) => e.is_dir && S.isStudyFolder(e.name));
     let trashed = [];
     if (state.deleted) {
       try {
@@ -498,7 +496,11 @@
       return;
     }
 
-    state.studies = folders.map((e) => S.newStudy(root, e));
+    // Newest study first. Cards are ordered once, before metadata arrives, so
+    // the date comes from the folder-name timestamp (legacy CASE#### folders
+    // fall back to the folder's mod time); the grid never reshuffles later.
+    const byDate = (a, b) => (S.studyDate(b) || 0) - (S.studyDate(a) || 0);
+    state.studies = folders.map((e) => S.newStudy(root, e)).sort(byDate);
     if (state.deleted) {
       // Only studies holding deleted files belong here, and that takes a
       // listing each: hydrate up front (a few at a time) rather than lazily,
@@ -515,7 +517,7 @@
       if (state.root !== root) return; // storage changed meanwhile
       state.studies = live.filter((s) => !s.hydrated || s.media.length)
         .concat(trashed.map((e) => S.trashedStudy(root, e)))
-        .sort((a, b) => b.modTime - a.modTime);
+        .sort(byDate);
     }
     state.focus = 0;
     $("#grid-empty").hidden = state.studies.length > 0;
@@ -599,6 +601,7 @@
     if (sid) sub.appendChild(subItem("ic_id", sid));
     const dob = S.formatDOB(i);
     if (dob) sub.appendChild(subItem("ic_birthday", dob));
+    if (state.deleted && study.deletedAt) sub.appendChild(el("span", "si deleted-at", "Deleted " + S.formatDate(new Date(study.deletedAt))));
 
     fillCardThumb(study);
   }

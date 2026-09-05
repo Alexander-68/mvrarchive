@@ -25,9 +25,9 @@
     if (META_NAMES.has(name.toLowerCase())) return null;
     const ext = path.extname(name);
     if (ext === "dcm" || ext === "dicom") {
-      // DICOM can wrap either; disambiguate by the MVR filename prefix.
-      const c = name[0] && name[0].toUpperCase();
-      return c === "V" || c === "W" ? "video" : "image";
+      // DICOM can wrap either; only the MVR video naming (V0001 / W0001) is
+      // video. Other names (a PACS-style VLp.X.<uid>.dcm) are stills.
+      return /^[VW]\d/i.test(name) ? "video" : "image";
     }
     if (IMAGE_EXT.has(ext)) return "image";
     if (VIDEO_EXT.has(ext)) return "video";

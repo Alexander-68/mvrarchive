@@ -31,5 +31,8 @@ const bare = { folderName: "CASE0042", info: null };
 assert.strictEqual(S.dicomTags(bare).PatientName, "CASE0042");
 assert.strictEqual(S.dicomTags(bare).PatientID, "CASE0042");
 
+assert.strictEqual(S.mediaKind("V0001.dcm"), "video");
+assert.strictEqual(S.mediaKind("VLp.X.1.2.276.0.7230010.903.dcm"), "image");
+assert.strictEqual(S.mediaKind("MRBRAIN.DCM"), "image");
 assert.ok(S.pacsSendable("I0001.jpg") && S.pacsSendable("I0002.dcm") && !S.pacsSendable("V0001.mp4"));
 console.log("ok");

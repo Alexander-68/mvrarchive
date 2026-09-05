@@ -11,6 +11,8 @@
 //   Ctrl+C  copy the selection; Ctrl+V pastes studies into the open storage
 //           or files into the open study (never into the same place)
 //   Delete  delete the selection (after a confirm dialog; gateway soft-deletes)
+//   Deleted (header toggle) browse deleted files: trashed study folders plus
+//           live studies that hold deleted files; selection offers Restore only
 //   Mouse   click to focus+open; wheel zooms the viewer image; drag pans it
 //   Touch   tap to open; swipe left/right in the viewer changes file
 (function () {
@@ -27,6 +29,7 @@
     focus: 0,            // index into visible studies
     clip: null,          // { kind: "study" | "file", items: [{ path, name, from }] } after Copy
     pacs: [],            // PACS servers from /api/pacs; Send to PACS shows when non-empty
+    deleted: false,      // Deleted toggle: browse trashed content, Restore instead of Copy/Delete/PACS
     current: null,       // study open in detail view
     mediaFocus: 0,       // index into current.media
     cardSize: 300,       // archive card min width (px), Ctrl+wheel/pinch adjustable
@@ -473,9 +476,15 @@
     const folders = entries
       .filter((e) => e.is_dir && S.isStudyFolder(e.name))
       .sort((a, b) => (Date.parse(b.mod_time) || 0) - (Date.parse(a.mod_time) || 0));
+    let trashed = [];
+    if (state.deleted) {
+      try {
+        trashed = (await api.list(root, true)).filter((e) => e.is_dir && S.isStudyFolder(e.original_name || e.name));
+      } catch (e) { toast("Could not list deleted entries: " + e.message, true); }
+    }
 
     // When storage has no subfolders (studies), go to file view mode directly!
-    if (folders.length === 0) {
+    if (folders.length === 0 && trashed.length === 0) {
       const directStudy = S.newStudy(root, {
         name: MVR.path.basename(root) || root,
         mod_time: "",
@@ -490,6 +499,24 @@
     }
 
     state.studies = folders.map((e) => S.newStudy(root, e));
+    if (state.deleted) {
+      // Only studies holding deleted files belong here, and that takes a
+      // listing each: hydrate up front (a few at a time) rather than lazily,
+      // so cards do not appear and then vanish while scrolling.
+      const live = state.studies;
+      let next = 0;
+      const worker = async () => {
+        while (next < live.length) {
+          const s = live[next++];
+          try { await S.hydrate(s); } catch (e) { /* card stays, hydrates lazily */ }
+        }
+      };
+      await Promise.all(Array.from({ length: 6 }, worker));
+      if (state.root !== root) return; // storage changed meanwhile
+      state.studies = live.filter((s) => !s.hydrated || s.media.length)
+        .concat(trashed.map((e) => S.trashedStudy(root, e)))
+        .sort((a, b) => b.modTime - a.modTime);
+    }
     state.focus = 0;
     $("#grid-empty").hidden = state.studies.length > 0;
 
@@ -501,6 +528,8 @@
     for (const study of state.studies) {
       study.cardEl = buildCard(study);
       study.cardEl._study = study;
+      study.cardEl.classList.toggle("trashed", study.trashed);
+      if (study.hydrated) fillCard(study);
       grid.appendChild(study.cardEl);
 
       if (cardVisibleObserver) {
@@ -670,9 +699,11 @@
     if (clip) parts.push(`${clip.items.length} ${noun(clip.kind, clip.items.length)} copied`);
     if (sel) parts.push(`${sel} ${noun(studies ? "study" : "file", sel)} selected`);
     $("#free-space").textContent = parts.join(" · ");
-    $("#sel-copy").hidden = !sel;
-    $("#sel-delete").hidden = !sel;
-    $("#sel-pacs").hidden = !sel || !state.pacs.length;
+    const d = state.deleted;
+    $("#sel-copy").hidden = !sel || d;
+    $("#sel-delete").hidden = !sel || d;
+    $("#sel-pacs").hidden = !sel || !state.pacs.length || d;
+    $("#sel-restore").hidden = !sel || !d;
     $("#sel-paste").hidden = !clip;
     $("#sel-clear").hidden = !sel && !clip;
     if (clip) {
@@ -695,6 +726,7 @@
     return { kind: "file", items };
   }
   function copySelection() {
+    if (state.deleted) return;
     const { kind, items } = selectedItems();
     if (!items.length) return;
     const clip = state.clip;
@@ -733,6 +765,7 @@
     return "";
   }
   async function pasteClip() {
+    if (state.deleted) return;
     const why = pasteBlocker();
     if (why) { toast(why, true); return; }
     const clip = state.clip;
@@ -778,7 +811,7 @@
   }
   // After files or studies vanish, reload what showed them.
   function reloadAfter(kind, items) {
-    if (kind === "study") { loadArchive(state.root); return; }
+    if (kind === "study" || state.deleted) { loadArchive(state.root); return; }
     const touched = new Set(items.map((it) => it.study));
     for (const st of touched) {
       st.hydrated = false;
@@ -787,7 +820,21 @@
     if (state.current && touched.has(state.current)) openStudy(state.current);
   }
 
+  async function restoreSelection() {
+    const { kind, items } = selectedItems();
+    if (!items.length) return;
+    let ok = 0; const errors = [];
+    for (const it of items) {
+      toast(`Restoring ${it.name}... (${ok + 1}/${items.length})`);
+      try { await api.restore(it.path); ok++; } catch (e) { errors.push(`${it.name}: ${e.message}`); }
+    }
+    deselectAll();
+    toast(errors.length ? `Restored ${ok}, failed ${errors.length}: ${errors[0]}` : `Restored ${plural(ok, "item")}`, !!errors.length);
+    reloadAfter(kind, items);
+  }
+
   async function deleteSelection() {
+    if (state.deleted) return;
     const { kind, items } = selectedItems();
     if (!items.length) return;
     const body = el("div");
@@ -815,6 +862,7 @@
   }
 
   async function sendToPacs() {
+    if (state.deleted) return;
     const { kind, items } = selectedItems();
     if (!items.length || !state.pacs.length) return;
     if (kind === "study") await hydrateAll(items);
@@ -1586,6 +1634,14 @@
     $("#sel-paste").onclick = pasteClip;
     $("#sel-clear").onclick = clearSelection;
     $("#sel-delete").onclick = deleteSelection;
+    $("#sel-restore").onclick = restoreSelection;
+    $("#btn-deleted").onclick = () => {
+      state.deleted = S.showDeleted = !state.deleted;
+      $("#btn-deleted").setAttribute("aria-pressed", String(state.deleted));
+      $("#btn-deleted").dataset.tip = state.deleted ? "Show current files" : "Show deleted files";
+      clearSelection();
+      loadArchive(state.root);
+    };
     $("#sel-pacs").onclick = sendToPacs;
     $("#modal-close").onclick = $("#modal-cancel").onclick = () => $("#modal").close();
     $("#search-clear").onclick = () => { search.value = ""; state.query = ""; applySearch(); search.focus(); };

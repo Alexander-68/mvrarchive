@@ -122,19 +122,24 @@
 
   // hydrate lists a study folder's contents and computes everything the UI needs:
   // media file list, counts, total size, a thumbnail candidate, and metadata.
+  // In deleted mode (S.showDeleted) a live study lists only its deleted files;
+  // a trashed study folder (study.trashed) lists as usual, since everything in
+  // it is already deleted. Metadata always comes from the live listing.
   async function hydrate(study) {
     const entries = await api.list(study.path);
+    const mediaEntries = MVR.study.showDeleted && !study.trashed ? await api.list(study.path, true) : entries;
     const media = [];
     let images = 0, videos = 0, pdfs = 0, size = 0;
-    for (const e of entries) {
+    for (const e of mediaEntries) {
       if (e.is_dir) continue;
-      const kind = mediaKind(e.name);
+      const name = e.original_name || e.name;
+      const kind = mediaKind(name);
       if (!kind) continue;
       size += e.size || 0;
       if (kind === "image") images++;
       else if (kind === "video") videos++;
       else if (kind === "pdf") pdfs++;
-      media.push({ name: e.name, kind, size: e.size, path: path.join(study.path, e.name) });
+      media.push({ name, kind, size: e.size, path: path.join(study.path, e.name) });
     }
     media.sort((a, b) => a.name.localeCompare(b.name));
     study.media = media;
@@ -161,7 +166,17 @@
       thumbFile: null,
       marked: false,
       isDirectRoot: isRoot,
+      trashed: false,
     };
+  }
+
+  // trashedStudy builds a study for a deleted folder from a deleted listing:
+  // the on-disk trash name goes into the path, the original name is shown.
+  function trashedStudy(root, entry) {
+    const s = newStudy(root, { name: entry.name, mod_time: entry.deleted_at || entry.mod_time });
+    s.folderName = entry.original_name || entry.name;
+    s.trashed = true;
+    return s;
   }
 
   // searchText builds the lowercased haystack a study is matched against.
@@ -274,7 +289,8 @@
   }
 
   MVR.study = {
-    isStudyFolder, mediaKind, parseStampName, newStudy, hydrate,
+    showDeleted: false,
+    isStudyFolder, mediaKind, parseStampName, newStudy, trashedStudy, hydrate,
     displayName, studyDate, fullName, formatDOB, formatDate, fmtSize,
     matches, FIELD_GROUPS, KNOWN_KEYS, fieldValue, pacsSendable, dicomTags,
   };

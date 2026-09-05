@@ -103,8 +103,11 @@
       .filter(Boolean);
   }
 
-  async function list(path) {
-    const d = await reqJSON("GET", "api/files" + q(path));
+  // list returns a directory's entries; with deleted=true the directory's
+  // deleted (trashed) entries instead, each carrying original_name/deleted_at
+  // while name is the on-disk trash name to use in paths.
+  async function list(path, deleted) {
+    const d = await reqJSON("GET", "api/files" + q(path) + (deleted ? "&deleted=1" : ""));
     return d.entries || [];
   }
 
@@ -155,6 +158,10 @@
   async function del(path) {
     return reqJSON("DELETE", "api/files/delete" + q(path));
   }
+  // restore renames a trashed entry (its trash path) back to its original name.
+  async function restore(path) {
+    return reqJSON("POST", "api/files/restore" + q(path));
+  }
   // copy duplicates src as dst (dst is the new entry's full path; 409 if it exists).
   async function copy(src, dst) {
     return reqJSON("POST", `api/files/copy?src=${encodeURIComponent(src)}&dst=${encodeURIComponent(dst)}`);
@@ -173,5 +180,5 @@
     return d;
   }
 
-  MVR.api = { platform, me, roots, list, readText, readBlob, objectURL, fileURL, thumbURL, dicomDump, writeText, mkdir, del, copy, pacs, pacsSend, mimeFor };
+  MVR.api = { platform, me, roots, list, readText, readBlob, objectURL, fileURL, thumbURL, dicomDump, writeText, mkdir, del, restore, copy, pacs, pacsSend, mimeFor };
 })();

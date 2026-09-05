@@ -140,6 +140,7 @@ html[data-theme="light"] button:hover:not(:disabled) { filter: brightness(0.95);
 button:disabled { opacity: .45; cursor: default; }
 button.primary { background: var(--accent); color: #06283d; border-color: transparent; font-weight: 600; }
 button.ghost { background: transparent; }
+button.toggle[aria-pressed="true"] { border-color: var(--error); color: var(--error); font-weight: 600; }
 .iconbtn {
   background: transparent; border-color: transparent; padding: .4rem .55rem;
   font-size: 1.05rem; line-height: 1;
@@ -164,6 +165,7 @@ button.ghost { background: transparent; }
 .card:hover { border-color: var(--accent); transform: translateY(-2px); box-shadow: 0 8px 22px var(--card-shadow); }
 .card.copied { border: 5px solid var(--copied); }
 .card.marked { border: 5px solid var(--checkmark); }
+.card.trashed { border-style: dashed; }
 
 .card-thumb {
   position: relative; aspect-ratio: 408 / 280; background: var(--thumb-bg);

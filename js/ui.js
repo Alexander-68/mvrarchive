@@ -167,6 +167,7 @@
           await S.hydrate(topStudy);
           fillCard(topStudy);
           if (state.query) applySearch();
+          scheduleResort();
         } catch (e) {
           /* ignore error */
         } finally {
@@ -473,11 +474,13 @@
       return;
     }
 
-    const folders = entries.filter((e) => e.is_dir && S.isStudyFolder(e.name));
+    // Every subfolder is a study card: MVR-named or not, the folder may still
+    // hold media or a study_info.yaml.
+    const folders = entries.filter((e) => e.is_dir);
     let trashed = [];
     if (state.deleted) {
       try {
-        trashed = (await api.list(root, true)).filter((e) => e.is_dir && S.isStudyFolder(e.original_name || e.name));
+        trashed = (await api.list(root, true)).filter((e) => e.is_dir);
       } catch (e) { toast("Could not list deleted entries: " + e.message, true); }
     }
 
@@ -496,10 +499,8 @@
       return;
     }
 
-    // Newest study first. Cards are ordered once, before metadata arrives, so
-    // the date comes from the folder-name timestamp (legacy CASE#### folders
-    // fall back to the folder's mod time); the grid never reshuffles later.
-    const byDate = (a, b) => (S.studyDate(b) || 0) - (S.studyDate(a) || 0);
+    // Newest study first: folder-name timestamp (or mod time) now, and again
+    // via resortCards once a study's metadata StudyDate arrives.
     state.studies = folders.map((e) => S.newStudy(root, e)).sort(byDate);
     if (state.deleted) {
       // Only studies holding deleted files belong here, and that takes a
@@ -544,6 +545,31 @@
     applySearch();
     updateArchiveFocus();
     scanAndScheduleLazyLoads();
+  }
+
+  // ---- ordering -------------------------------------------------------------
+  const byDate = (a, b) => (S.studyDate(b) || 0) - (S.studyDate(a) || 0);
+  let resortTimer = null;
+  function scheduleResort() {
+    clearTimeout(resortTimer);
+    resortTimer = setTimeout(resortCards, 300);
+  }
+  // resortCards re-orders the grid after hydration changed a study's date,
+  // moving only the cards that are out of place and keeping the focus cursor
+  // on the same study.
+  function resortCards() {
+    const focused = visibleStudies()[state.focus];
+    state.studies.sort(byDate);
+    const grid = $("#grid");
+    let moved = false;
+    state.studies.forEach((s, i) => {
+      if (!s.cardEl || grid.children[i] === s.cardEl) return;
+      grid.insertBefore(s.cardEl, grid.children[i] || null);
+      moved = true;
+    });
+    if (!moved) return;
+    if (focused) state.focus = Math.max(0, visibleStudies().indexOf(focused));
+    if (state.view === "archive") { updateArchiveFocus(); scanAndScheduleLazyLoads(); }
   }
 
   function buildCard(study) {
@@ -977,7 +1003,7 @@
       $("#detail-sub").textContent = "Loading…";
       // Fill the card too: the lazy scheduler skips hydrated studies, so a card
       // hydrated here (Prev/Next into an unseen study) would otherwise stay blank.
-      try { await S.hydrate(study); fillCard(study); } catch (e) { toast(e.message, true); }
+      try { await S.hydrate(study); fillCard(study); scheduleResort(); } catch (e) { toast(e.message, true); }
     }
     const c = study.counters;
     const bits = [];

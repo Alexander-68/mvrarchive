@@ -555,10 +555,11 @@
     resortTimer = setTimeout(resortCards, 300);
   }
   // resortCards re-orders the grid after hydration changed a study's date,
-  // moving only the cards that are out of place and keeping the focus cursor
-  // on the same study.
+  // moving only the cards that are out of place. The focus cursor stays at
+  // its grid position (so the top card stays current) and the page does not
+  // scroll: following a card that sank to the bottom would drag the view
+  // down on every resort.
   function resortCards() {
-    const focused = visibleStudies()[state.focus];
     state.studies.sort(byDate);
     const grid = $("#grid");
     let moved = false;
@@ -568,8 +569,7 @@
       moved = true;
     });
     if (!moved) return;
-    if (focused) state.focus = Math.max(0, visibleStudies().indexOf(focused));
-    if (state.view === "archive") { updateArchiveFocus(); scanAndScheduleLazyLoads(); }
+    if (state.view === "archive") { updateArchiveFocus("none"); scanAndScheduleLazyLoads(); }
   }
 
   function buildCard(study) {
@@ -948,7 +948,7 @@
     const currentStudy = vis[state.focus];
     const elc = currentStudy.cardEl;
     elc.classList.add("focused");
-    elc.scrollIntoView({ block });
+    if (block !== "none") elc.scrollIntoView({ block });
     if (!currentStudy.hydrated) {
       enqueueCard(currentStudy, 1);
     }

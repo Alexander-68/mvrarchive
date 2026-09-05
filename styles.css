@@ -159,7 +159,7 @@ button.ghost { background: transparent; }
   transition: border-color .15s ease, transform .15s ease, box-shadow .15s ease;
 }
 .card:hover { border-color: var(--accent); transform: translateY(-2px); box-shadow: 0 8px 22px var(--card-shadow); }
-.card.marked { border: 3px solid var(--checkmark); }
+.card.marked { border: 5px solid var(--checkmark); }
 
 .card-thumb {
   position: relative; aspect-ratio: 408 / 280; background: var(--thumb-bg);

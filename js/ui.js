@@ -1156,6 +1156,20 @@
   function updateViewerName() {
     const m = state.viewer.media[state.viewer.index];
     if (m) $("#viewer-name").textContent = viewerLabel(m);
+    updateViewerSelect();
+  }
+  // Select button and stage frame mirror the tile: yellow selected, green copied.
+  function updateViewerSelect() {
+    const m = state.viewer.media[state.viewer.index];
+    if (!m) return;
+    const st = m.selected ? "selected" : isCopied(m.path) ? "copied" : "";
+    $("#viewer").className = "viewer" + (st ? " " + st : "");
+    $("#viewer-select").textContent = st === "selected" ? "Selected ✓" : st === "copied" ? "Copied ✓" : "Select";
+  }
+  function viewerToggleSelect() {
+    setMediaFocus(state.viewer.index);
+    toggleSelectMedia();
+    updateViewerSelect();
   }
   function decodeImg(img, url) {
     return new Promise((res, rej) => { img.onload = () => res(); img.onerror = rej; img.src = url; });
@@ -1312,6 +1326,8 @@
       else if (e.key === "ArrowRight") { e.preventDefault(); step(1); }
       else if (e.key === "Escape") { closeViewer(); }
       else if (e.key === "Enter") { resetZoomVars(); applyZoom(); } // re-fit
+      else if (e.key === " ") { e.preventDefault(); viewerToggleSelect(); }
+      else if (e.ctrlKey && (e.key === "c" || e.key === "C")) { copySelection(); updateViewerSelect(); }
       return;
     }
 
@@ -1442,6 +1458,7 @@
     $("#btn-prev-study").onclick = () => navStudy(-1);
     $("#btn-next-study").onclick = () => navStudy(1);
     $("#viewer-close").onclick = closeViewer;
+    $("#viewer-select").onclick = viewerToggleSelect;
     $("#viewer-info").onclick = showDicomTags;
     $("#dicom-close").onclick = () => $("#dicom-dialog").close();
     $("#viewer-back").onclick = closeViewer;

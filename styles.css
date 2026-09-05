@@ -303,6 +303,10 @@ button.ghost { background: transparent; }
 
 /* ---- DICOM tag dialog ------------------------------------------------------ */
 .viewer-left { display: flex; gap: .4rem; align-items: center; }
+.viewer.selected #viewer-select { border-color: var(--checkmark); color: var(--checkmark); }
+.viewer.copied #viewer-select { border-color: var(--copied); color: var(--copied); }
+.viewer.selected .viewer-stage { box-shadow: inset 0 0 0 5px var(--checkmark); }
+.viewer.copied .viewer-stage { box-shadow: inset 0 0 0 5px var(--copied); }
 .dicom-dialog {
   width: min(900px, 92vw); max-height: 82vh; padding: 0; border-radius: var(--radius);
   background: var(--surface-2); border: 1px solid var(--line); color: var(--text);

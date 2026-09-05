@@ -219,7 +219,7 @@ button.ghost { background: transparent; }
 .media-tile .cap img { width: 13px; height: 13px; flex: 0 0 auto; opacity: .85; }
 .media-tile .cap-name { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .media-tile.focused { outline: 5px solid var(--accent); outline-offset: 0; }
-.media-tile.selected { border: 3px solid var(--checkmark); }
+.media-tile.selected { border: 5px solid var(--checkmark); }
 
 .info-panel {
   background: var(--bg-2); border: 1px solid var(--line);

@@ -257,21 +257,23 @@
     return "2.25." + n.toString();
   }
 
-  // dicomTags maps study metadata onto the DICOM tags a C-STORE should carry.
-  // The gateway never invents patient identity, so PatientName / PatientID always
-  // get a value; StudyInstanceUID is generated once per study and kept for the
-  // session so repeated sends land in the same PACS study.
+  // dicomTags maps study metadata (study_info / patient_info) onto the DICOM
+  // tags a C-STORE should carry. Only what the metadata says is sent: nothing
+  // is derived from the folder name, so a study without metadata sends no
+  // patient identity at all. StudyInstanceUID is the metadata's, else one
+  // generated per study and kept for the session so repeated sends land in
+  // the same PACS study.
   function dicomTags(study) {
     const i = study.info || {};
     const t = {};
     const human = [i.PatientLastName, i.PatientFirstName, i.PatientMiddleName].map((v) => v || "").join("^").replace(/\^+$/, "");
-    t.PatientName = String(i.AnimalName || human || displayName(study));
-    t.PatientID = String(i.StudyID || (parseStampName(study.folderName) || {}).studyId || study.folderName);
+    if (i.AnimalName || human) t.PatientName = String(i.AnimalName || human);
+    if (i.PatientID || i.StudyID) t.PatientID = String(i.PatientID || i.StudyID);
     const dob = formatDOB(i);
     if (dob.length === 10) t.PatientBirthDate = dob.replace(/-/g, "");
     const sex = String(i.PatientGender || "").toUpperCase()[0];
     if (sex && "MFO".includes(sex)) t.PatientSex = sex;
-    const d = studyDate(study);
+    const d = i.StudyDate ? new Date(Number(i.StudyDate)) : null;
     if (d && !isNaN(d)) {
       t.StudyDate = `${d.getFullYear()}${pad2(d.getMonth() + 1)}${pad2(d.getDate())}`;
       t.StudyTime = `${pad2(d.getHours())}${pad2(d.getMinutes())}${pad2(d.getSeconds())}`;

@@ -26,10 +26,12 @@ assert.match(t.StudyInstanceUID, /^2\.25\.\d+$/);
 assert.ok(t.StudyInstanceUID.length <= 64);
 assert.strictEqual(S.dicomTags(study).StudyInstanceUID, t.StudyInstanceUID, "UID stable per study");
 
-// No metadata at all: identity still comes from the folder name.
-const bare = { folderName: "CASE0042", info: null };
-assert.strictEqual(S.dicomTags(bare).PatientName, "CASE0042");
-assert.strictEqual(S.dicomTags(bare).PatientID, "CASE0042");
+// No metadata at all: nothing is invented from the folder name.
+const bare = { folderName: "20250905_101500_P777_SN1", info: null };
+const bt = S.dicomTags(bare);
+assert.deepStrictEqual(Object.keys(bt), ["StudyInstanceUID"]);
+// patient_info.json may carry PatientID directly; it wins over StudyID.
+assert.strictEqual(S.dicomTags({ folderName: "x", info: { PatientID: "MRN9", StudyID: "S1" } }).PatientID, "MRN9");
 
 assert.strictEqual(S.mediaKind("V0001.dcm"), "video");
 assert.strictEqual(S.mediaKind("VLp.X.1.2.276.0.7230010.903.dcm"), "image");

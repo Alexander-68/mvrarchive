@@ -660,9 +660,11 @@
     const sel = studies || files;
     const noun = (kind, n) => kind === "study" ? (n === 1 ? "study" : "studies") : (n === 1 ? "file" : "files");
     const clip = state.clip;
-    $("#free-space").textContent = clip ? `${clip.items.length} ${noun(clip.kind, clip.items.length)} copied`
-      : sel ? `${sel} ${noun(studies ? "study" : "file", sel)} selected` : "";
-    $("#sel-copy").hidden = !sel || !!clip;
+    const parts = [];
+    if (clip) parts.push(`${clip.items.length} ${noun(clip.kind, clip.items.length)} copied`);
+    if (sel) parts.push(`${sel} ${noun(studies ? "study" : "file", sel)} selected`);
+    $("#free-space").textContent = parts.join(" · ");
+    $("#sel-copy").hidden = !sel;
     $("#sel-paste").hidden = !clip;
     $("#sel-clear").hidden = !sel && !clip;
     if (clip) {
@@ -674,16 +676,27 @@
 
   // ---- copy / paste ---------------------------------------------------------
   // Studies paste into another storage, files into another study. The same
-  // place is refused rather than making "(copy)" duplicates.
+  // place is refused rather than making "(copy)" duplicates. Copying with a
+  // clipboard already present appends to it; Ctrl+click on a green item removes it.
   function copySelection() {
     const studies = state.studies.filter((s) => s.marked);
     const items = studies.length
       ? studies.map((s) => ({ path: s.path, name: s.folderName, from: s.root }))
       : state.studies.flatMap((s) => s.media.filter((m) => m.selected).map((m) => ({ path: m.path, name: m.name, from: s.path })));
     if (!items.length) return;
-    state.clip = { kind: studies.length ? "study" : "file", items };
+    const kind = studies.length ? "study" : "file";
+    const clip = state.clip;
+    if (clip && clip.kind !== kind) { toast(`Clipboard holds ${clip.kind === "study" ? "studies" : "files"}: clear it first`, true); return; }
+    const fresh = clip ? items.filter((i) => !isCopied(i.path)) : items;
+    state.clip = { kind, items: clip ? clip.items.concat(fresh) : items };
     deselectAll();
     markCopied();
+  }
+  function uncopy(path) {
+    const items = state.clip.items.filter((i) => i.path !== path);
+    state.clip = items.length ? { ...state.clip, items } : null;
+    markCopied();
+    refreshStatusRight();
   }
   // Green outline on whatever sits in the clipboard, so the user still sees what was copied.
   function isCopied(path) {
@@ -1065,6 +1078,7 @@
   function toggleSelectArchive() {
     const s = visibleStudies()[state.focus];
     if (!s) return;
+    if (isCopied(s.path)) { uncopy(s.path); return; }
     const on = !s.marked;
     if (on) for (const st of state.studies) for (const m of st.media) if (m.selected) setMediaSelected(m, false);
     setStudySelected(s, on);
@@ -1073,6 +1087,7 @@
   function toggleSelectMedia() {
     const m = state.current && state.current.media[state.mediaFocus];
     if (!m) return;
+    if (isCopied(m.path)) { uncopy(m.path); return; }
     const on = !m.selected;
     if (on) for (const st of state.studies) if (st.marked) setStudySelected(st, false);
     setMediaSelected(m, on);

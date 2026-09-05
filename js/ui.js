@@ -512,6 +512,7 @@
   function buildCard(study) {
     const card = el("div", "card");
     card.dataset.folder = study.folderName;
+    if (isCopied(study.path)) card.classList.add("copied");
 
     const parsed = S.parseStampName(study.folderName);
     const initialTitle = (parsed && parsed.studyId) ? parsed.studyId : study.folderName;
@@ -682,6 +683,17 @@
     if (!items.length) return;
     state.clip = { kind: studies.length ? "study" : "file", items };
     deselectAll();
+    markCopied();
+  }
+  // Green outline on whatever sits in the clipboard, so the user still sees what was copied.
+  function isCopied(path) {
+    return !!state.clip && state.clip.items.some((i) => i.path === path);
+  }
+  function markCopied() {
+    for (const s of state.studies) {
+      if (s.cardEl) s.cardEl.classList.toggle("copied", isCopied(s.path));
+      for (const m of s.media) if (m.tileEl) m.tileEl.classList.toggle("copied", isCopied(m.path));
+    }
   }
   function pasteBlocker() {
     const clip = state.clip;
@@ -892,6 +904,7 @@
       }
 
       if (m.selected) tile.classList.add("selected");
+      if (isCopied(m.path)) tile.classList.add("copied");
       tile.onclick = (e) => { setMediaFocus(idx); if (e.ctrlKey) toggleSelectMedia(); else openViewer(study, idx); };
       grid.appendChild(tile);
     });
@@ -1039,6 +1052,7 @@
   }
   function clearSelection() {
     state.clip = null;
+    markCopied();
     deselectAll();
   }
   function deselectAll() {

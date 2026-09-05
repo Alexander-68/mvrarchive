@@ -13,6 +13,7 @@
   --success: #3f8f42;
   --error: #c00000;
   --checkmark: #ffc107;
+  --copied: #39ff14;
   --focus: #193f51;
   --press: #21546c;
   --radius: 8px;
@@ -37,6 +38,7 @@ html[data-theme="light"] {
   --success: #16a34a;
   --error: #dc2626;
   --checkmark: #d97706;
+  --copied: #00c853;
   --focus: #bae6fd;
   --press: #7dd3fc;
   --thumb-bg: #000000;
@@ -159,6 +161,7 @@ button.ghost { background: transparent; }
   transition: border-color .15s ease, transform .15s ease, box-shadow .15s ease;
 }
 .card:hover { border-color: var(--accent); transform: translateY(-2px); box-shadow: 0 8px 22px var(--card-shadow); }
+.card.copied { border: 5px solid var(--copied); }
 .card.marked { border: 5px solid var(--checkmark); }
 
 .card-thumb {
@@ -219,6 +222,7 @@ button.ghost { background: transparent; }
 .media-tile .cap img { width: 13px; height: 13px; flex: 0 0 auto; opacity: .85; }
 .media-tile .cap-name { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .media-tile.focused { outline: 5px solid var(--accent); outline-offset: 0; }
+.media-tile.copied { border: 5px solid var(--copied); }
 .media-tile.selected { border: 5px solid var(--checkmark); }
 
 .info-panel {

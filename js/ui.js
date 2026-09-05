@@ -431,9 +431,13 @@
     state.view = "archive";
     $("#view-study").hidden = true;
     $("#view-archive").hidden = false;
+    // The study just left (possibly reached via Prev/Next) becomes the focused
+    // card, scrolled to the top row so the user lands where they were.
+    const idx = state.current ? visibleStudies().indexOf(state.current) : -1;
+    if (idx >= 0) state.focus = idx;
     state.current = null;
     refreshStatusRight();
-    updateArchiveFocus();
+    updateArchiveFocus(idx >= 0 ? "start" : "nearest");
     scanAndScheduleLazyLoads();
   }
   function showStudy() {
@@ -754,7 +758,7 @@
     state.focus = Math.max(0, Math.min(i, vis.length - 1));
     updateArchiveFocus();
   }
-  function updateArchiveFocus() {
+  function updateArchiveFocus(block = "nearest") {
     state.studies.forEach((s) => s.cardEl && s.cardEl.classList.remove("focused"));
     const vis = visibleStudies();
     if (!vis.length) return;
@@ -762,7 +766,7 @@
     const currentStudy = vis[state.focus];
     const elc = currentStudy.cardEl;
     elc.classList.add("focused");
-    elc.scrollIntoView({ block: "nearest" });
+    elc.scrollIntoView({ block });
     if (!currentStudy.hydrated) {
       enqueueCard(currentStudy, 1);
     }

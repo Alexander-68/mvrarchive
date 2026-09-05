@@ -155,6 +155,7 @@ button.ghost { background: transparent; }
 }
 
 .card {
+  scroll-margin-top: calc(var(--topbar-height, 0px) + 1rem); /* clear the fixed top bar */
   background: var(--bg-2); border: 2px solid var(--line);
   border-radius: var(--radius); overflow: hidden; cursor: pointer;
   display: flex; flex-direction: column;

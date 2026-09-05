@@ -29,7 +29,8 @@ assert.strictEqual(S.dicomTags(study).StudyInstanceUID, t.StudyInstanceUID, "UID
 // No metadata at all: nothing is invented from the folder name.
 const bare = { folderName: "20250905_101500_P777_SN1", info: null };
 const bt = S.dicomTags(bare);
-assert.deepStrictEqual(Object.keys(bt), ["StudyInstanceUID"]);
+assert.deepStrictEqual(Object.keys(bt).sort(), ["StudyDate", "StudyInstanceUID", "StudyTime"]);
+assert.strictEqual(bt.StudyDate + bt.StudyTime, "20250905101500");
 // patient_info.json may carry PatientID directly; it wins over StudyID.
 assert.strictEqual(S.dicomTags({ folderName: "x", info: { PatientID: "MRN9", StudyID: "S1" } }).PatientID, "MRN9");
 

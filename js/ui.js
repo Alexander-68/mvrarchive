@@ -919,7 +919,7 @@
     for (const p of state.pacs) { const o = el("option", null, `${p.name} (${p.aet}@${p.host}:${p.port})`); o.value = p.name; sel.appendChild(o); }
     body.appendChild(el("div", null, "PACS server"));
     body.appendChild(sel);
-    body.appendChild(el("div", null, `${plural(files.length, "file")} to send` + (skipped ? ` (${skipped} skipped: only JPEG, BMP, MP4 and DICOM can be sent)` : "")));
+    body.appendChild(el("div", null, `${plural(files.length, "file")} to send` + (skipped ? ` (${skipped} skipped: only JPEG, BMP, MP4, PDF and DICOM can be sent)` : "")));
     body.appendChild(firstNames(files));
     openModal("Send to PACS", body, "Send", "primary", async (run) => {
       sel.disabled = true;

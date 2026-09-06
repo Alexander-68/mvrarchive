@@ -246,7 +246,7 @@
   }
 
   // ---- Send to PACS ----------------------------------------------------------
-  const PACS_EXT = new Set(["jpg", "jpeg", "bmp", "mp4", "dcm", "dicom"]);
+  const PACS_EXT = new Set(["jpg", "jpeg", "bmp", "mp4", "pdf", "dcm", "dicom"]);
   function pacsSendable(name) { return PACS_EXT.has(path.extname(name)); }
 
   // UUID-derived UID (DICOM PS3.5 B.2): "2.25." + 128-bit random as decimal.
@@ -258,7 +258,8 @@
   }
 
   // dicomTags maps study metadata (study_info / patient_info) onto the DICOM
-  // tags a C-STORE should carry. Only what the metadata says is sent: nothing
+  // tags a C-STORE should carry, the way the MVR recorder's own dicomizer
+  // does (mvr: dicom/DicomWriter.kt). Only what the metadata says is sent: nothing
   // is derived from the folder name except the study date/time, which falls
   // back to the folder-name timestamp; a study without metadata sends no
   // patient identity at all. StudyInstanceUID is the metadata's, else one
@@ -274,24 +275,43 @@
     if (dob.length === 10) t.PatientBirthDate = dob.replace(/-/g, "");
     const sex = String(i.PatientGender || "").toUpperCase()[0];
     if (sex && "MFO".includes(sex)) t.PatientSex = sex;
-    // Study date/time: metadata StudyDate, else the folder-name timestamp.
+    // Study date/time: the worklist's, else metadata StudyDate, else the
+    // folder-name timestamp.
     let d = i.StudyDate ? new Date(Number(i.StudyDate)) : null;
     if (!d || isNaN(d)) d = (parseStampName(study.folderName) || {}).date || null;
     if (d && !isNaN(d)) {
       t.StudyDate = `${d.getFullYear()}${pad2(d.getMonth() + 1)}${pad2(d.getDate())}`;
       t.StudyTime = `${pad2(d.getHours())}${pad2(d.getMinutes())}${pad2(d.getSeconds())}`;
     }
+    if (/^\d{8}$/.test(i.WlStudyDate || "")) t.StudyDate = i.WlStudyDate;
+    if (/^\d{6}/.test(i.WlStudyTime || "")) t.StudyTime = i.WlStudyTime;
+    // DICOM tag <- metadata key; the first key with a value wins.
     const map = {
-      AccessionNumber: "AccessionNumber", InstitutionName: "InstitutionName",
-      StudyDescription: "RequestedProcedureDescription",
-      ReferringPhysicianName: "ReferringPhysician", PerformingPhysicianName: "PerformingPhysician",
-      ResponsiblePerson: "ResponsiblePerson", PatientSpeciesDescription: "SpeciesDescription",
-      PatientBreedDescription: "BreedCode",
+      AccessionNumber: ["AccessionNumber"],
+      InstitutionName: ["InstitutionName"], InstitutionAddress: ["InstitutionAddress"],
+      InstitutionalDepartmentName: ["InstitutionDepartmentName"],
+      StudyDescription: ["PatientNotes"],
+      RequestedProcedureDescription: ["RequestedProcedureDescription", "PatientNotes"],
+      ReferringPhysicianName: ["ReferringPhysician"], PerformingPhysicianName: ["PerformingPhysician"],
+      RequestingPhysician: ["RequestingPhysician"], PhysiciansOfRecord: ["RequestingPhysician"],
+      IssuerOfPatientID: ["IssuerOfPatientId"], OtherPatientIDs: ["OtherPatientIds"],
+      PatientAddress: ["PatientAddress"], MilitaryRank: ["MilitaryRank"],
+      MedicalAlerts: ["MedicalAlerts"], Allergies: ["Allergies"],
+      AdditionalPatientHistory: ["AdditionalPatientHistory"], LastMenstrualDate: ["LastMenstrualDate"],
+      ResponsiblePerson: ["ResponsiblePerson"], ResponsiblePersonRole: ["ResponsiblePersonRole"],
+      PatientSpeciesDescription: ["SpeciesDescription"], PatientBreedDescription: ["BreedCode"],
+      BodyPartExamined: ["BodyPartExamined"], Laterality: ["Laterality"],
+      AdmissionID: ["AdmissionID"], SpecialNeeds: ["SpecialNeeds"],
+      RequestedProcedureID: ["RequestedProcedureID"], RequestedProcedureComments: ["RequestedProcedureComments"],
+      PlacerOrderNumber: ["PlacerOrderNumber"],
     };
-    for (const [tag, key] of Object.entries(map)) {
-      const v = i[key];
-      if (v !== null && v !== undefined && typeof v !== "object" && String(v).trim()) t[tag] = String(v).trim();
+    for (const [tag, keys] of Object.entries(map)) {
+      for (const key of keys) {
+        const v = i[key];
+        if (v !== null && v !== undefined && typeof v !== "object" && String(v).trim()) { t[tag] = String(v).trim(); break; }
+      }
     }
+    if (i.PregnancyStatus >= 1 && i.PregnancyStatus <= 4) t.PregnancyStatus = String(i.PregnancyStatus);
     if (!study.sendUID) study.sendUID = i.StudyInstanceUID || genUID();
     t.StudyInstanceUID = study.sendUID;
     return t;

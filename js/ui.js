@@ -1394,7 +1394,7 @@
     const ext = MVR.path.extname(m.name);
     const isDicom = ext === "dcm" || ext === "dicom";
     $("#viewer-info").hidden = !isDicom;
-    if (isDicom && m.kind !== "video") return showImage(m, stage, api.payloadURL(m.path), api.thumbURL(m.path));
+    if (isDicom && m.kind === "image") return showImage(m, stage, api.payloadURL(m.path), api.thumbURL(m.path));
     if (m.kind === "image") return showImage(m, stage);
 
     // Heavy media: stream straight from the read URL (Range-capable), so video

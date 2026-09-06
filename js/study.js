@@ -246,7 +246,7 @@
   }
 
   // ---- Send to PACS ----------------------------------------------------------
-  const PACS_EXT = new Set(["jpg", "jpeg", "bmp", "dcm", "dicom"]);
+  const PACS_EXT = new Set(["jpg", "jpeg", "bmp", "mp4", "dcm", "dicom"]);
   function pacsSendable(name) { return PACS_EXT.has(path.extname(name)); }
 
   // UUID-derived UID (DICOM PS3.5 B.2): "2.25." + 128-bit random as decimal.

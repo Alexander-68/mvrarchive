@@ -739,11 +739,12 @@
     if (sel) parts.push(`${sel} ${noun(studies ? "study" : "file", sel)} selected`);
     $("#free-space").textContent = parts.join(" · ");
     const d = state.deleted;
+    const ro = api.readOnly.has(state.root);
     $("#sel-copy").hidden = !sel || d;
-    $("#sel-delete").hidden = !sel || d;
+    $("#sel-delete").hidden = !sel || d || ro;
     $("#sel-pacs").hidden = !sel || !state.pacs.length || d;
-    $("#sel-restore").hidden = !sel || !d;
-    $("#sel-paste").hidden = !clip;
+    $("#sel-restore").hidden = !sel || !d || ro;
+    $("#sel-paste").hidden = !clip || ro;
     $("#sel-clear").hidden = !sel && !clip;
     if (clip) {
       const why = pasteBlocker();
@@ -794,6 +795,7 @@
   function pasteBlocker() {
     const clip = state.clip;
     if (!clip) return "Nothing copied";
+    if (api.readOnly.has(state.root)) return "This storage is read-only";
     if (clip.kind === "study") {
       if (state.view !== "archive") return "Studies paste into a storage: go back to the study list";
       if (clip.items.some((i) => i.from === state.root)) return "Already in this storage: switch to another one";
@@ -860,6 +862,7 @@
   }
 
   async function restoreSelection() {
+    if (api.readOnly.has(state.root)) return;
     const { kind, items } = selectedItems();
     if (!items.length) return;
     let ok = 0; const errors = [];
@@ -873,7 +876,7 @@
   }
 
   async function deleteSelection() {
-    if (state.deleted) return;
+    if (state.deleted || api.readOnly.has(state.root)) return;
     const { kind, items } = selectedItems();
     if (!items.length) return;
     const body = el("div");

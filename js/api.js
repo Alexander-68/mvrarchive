@@ -96,8 +96,13 @@
   // /api/roots returns named shares. The app uses virtual paths of the form
   // /SHARE/subdir for every API call; older absolute-path gateways are tolerated
   // so local deployments are not forced to upgrade in lockstep.
+  // readOnly collects the shares whose writable flag is false, so the UI can
+  // hide Delete/Paste/Restore there (the server enforces 403 regardless).
+  const readOnly = new Set();
   async function roots() {
     const d = await reqJSON("GET", "api/roots");
+    readOnly.clear();
+    for (const r of d.roots || []) if (r && r.writable === false) readOnly.add(normalizeRoot(r));
     return (d.roots || [])
       .map(normalizeRoot)
       .filter(Boolean);
@@ -180,5 +185,5 @@
     return d;
   }
 
-  MVR.api = { platform, me, roots, list, readText, readBlob, objectURL, fileURL, thumbURL, dicomDump, writeText, mkdir, del, restore, copy, pacs, pacsSend, mimeFor };
+  MVR.api = { platform, me, roots, readOnly, list, readText, readBlob, objectURL, fileURL, thumbURL, dicomDump, writeText, mkdir, del, restore, copy, pacs, pacsSend, mimeFor };
 })();

@@ -13,6 +13,6 @@ assert.match(ui, /visual\[Math\.round\(i \* \(visual\.length - 1\) \/ 3\)\]/);
 assert.doesNotMatch(ui, /quad-grid/);
 
 // Dispatch-time zone re-check: items scrolled out of range are dropped, not loaded.
-assert.match(ui, /cardQueue\.shift\(\);[\s\S]*?if \(!getElementZone\(topStudy\.cardEl\)\) continue;/);
+assert.match(ui, /cardQueue\.shift\(\);[\s\S]*?if \(!state\.query && !getElementZone\(topStudy\.cardEl\)\) continue;/);
 assert.match(ui, /mediaQueue\.shift\(\);[\s\S]*?if \(!getElementZone\(topItem\.media\.tileEl\)\) continue;/);
 assert.match(ui, /if \(!rect\.width && !rect\.height\) return 0;/);

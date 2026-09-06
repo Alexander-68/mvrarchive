@@ -9,7 +9,7 @@
 //   GET    /api/files?path=            -> { path, entries: [{name,is_dir,size,mod_time}] }
 //   GET    /api/files/read?path=       -> raw bytes (streams, honours Range)
 //   GET    /api/files/thumbnail?path=  -> JPEG thumbnail
-//   GET    /api/files/payload?path=    -> JPEG/MP4 wrapped in a DICOM file, served in place (Range OK)
+//   GET    /api/files/payload?path=    -> JPEG/MP4/PDF wrapped in a DICOM file, served in place (Range OK)
 //   PUT    /api/files/write?path=      -> { path, bytes }
 //   POST   /api/files/mkdir?path=      -> { path, created }
 //   DELETE /api/files/delete?path=     -> { path, deleted }
@@ -63,8 +63,8 @@
   // <video> seeks natively); thumbnail returns a small JPEG for images.
   function fileURL(path) { return "api/files/read" + q(path); }
   function thumbURL(path, w) { return "api/files/thumbnail" + q(path) + (w ? `&w=${w}` : ""); }
-  // The JPEG or MP4 encapsulated in a .dcm, header skipped server-side (415
-  // for anything else, e.g. uncompressed pixel data).
+  // The JPEG, MP4 or PDF encapsulated in a .dcm, header skipped server-side
+  // (415 for anything else, e.g. uncompressed pixel data).
   function payloadURL(path) { return "api/files/payload" + q(path); }
   // The bytes a browser can play: the encapsulated payload for a .dcm, else the file.
   function mediaURL(path) { return /\.(dcm|dicom)$/i.test(path) ? payloadURL(path) : fileURL(path); }

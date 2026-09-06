@@ -1412,7 +1412,7 @@
       applyZoom();
     } else if (m.kind === "pdf") {
       const f = document.createElement("iframe");
-      f.src = api.fileURL(m.path); stage.appendChild(f);
+      f.src = api.mediaURL(m.path); stage.appendChild(f);
     }
   }
 

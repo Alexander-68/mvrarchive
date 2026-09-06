@@ -52,7 +52,7 @@ empty produces no tag. `first non-empty wins` lists alternatives in order.
 
 | DICOM tag | VR | From metadata | Rule |
 |---|---|---|---|
-| StudyInstanceUID (0020,000D) | UI | `StudyInstanceUID` | else one `2.25.<uuid>` generated per study and kept for the session, so all files of a study share it |
+| StudyInstanceUID (0020,000D) | UI | `StudyInstanceUID` | else `2.25.<128-bit hash of the folder name>`: stable across sessions and devices, so a resend joins the same PACS study |
 | StudyDate (0008,0020) | DA | `WlStudyDate`, else `StudyDate` (epoch ms), else folder-name timestamp | |
 | StudyTime (0008,0030) | TM | `WlStudyTime`, else same source as StudyDate | |
 | AccessionNumber (0008,0050) | SH | `AccessionNumber` | |
@@ -116,12 +116,20 @@ them, except the UIDs and series/instance numbers.
 | Extra | PixelAspectRatio 1\1 | PixelAspectRatio 1\1 | FrameIncrementPointer → FrameTime | BurnedInAnnotation YES, DocumentTitle `Report`, MIME `application/pdf`, empty AcquisitionContext / ConceptNameCode sequences |
 
 Always: SpecificCharacterSet `ISO_IR 192` (UTF-8), ImageType
-`ORIGINAL\PRIMARY`, fresh SeriesInstanceUID and SOPInstanceUID (`2.25.<uuid>`),
-empty PatientOrientation for images/video.
+`ORIGINAL\PRIMARY`, empty PatientOrientation for images/video.
 
-storescu proposal: JPEG → `--propose-jpeg8`; MP4 → `--propose-mpeg4` /
-`--propose-hevc` (DCMTK's Default profile only offers MPEG-2 for video SOP
-classes); BMP and PDF → uncompressed (config profile or storescu default).
+UIDs follow the recorder's scheme: SeriesInstanceUID =
+`<StudyInstanceUID>.<SeriesNumber>`, SOPInstanceUID =
+`<SeriesInstanceUID>.<InstanceNumber>`. Same study + same file → same
+instance, so a PACS sees a resend as a duplicate. Random `2.25.<uuid>` UIDs
+are used only when no StudyInstanceUID is given or the derived UID would
+exceed 64 characters.
+
+Association: a wrapped object is sent with a generated one-context storescu
+profile proposing exactly its SOP class and transfer syntax (uncompressed
+objects also offer implicit VR LE). storescu's `--propose-*` flags are not
+used: they propose for every storage class and exhaust the 128 presentation
+contexts before the video classes.
 
 ## Adding a tag
 

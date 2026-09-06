@@ -25,9 +25,12 @@
     if (META_NAMES.has(name.toLowerCase())) return null;
     const ext = path.extname(name);
     if (ext === "dcm" || ext === "dicom") {
-      // DICOM can wrap either; only the MVR video naming (V0001 / W0001) is
-      // video. Other names (a PACS-style VLp.X.<uid>.dcm) are stills.
-      return /^[VW]\d/i.test(name) ? "video" : "image";
+      // DICOM can wrap any of them; the MVR naming tells: V0001 / W0001 are
+      // video, R0001 a PDF report (also storescp's PDF.<uid>.dcm). Other
+      // names (a PACS-style VLp.X.<uid>.dcm) are stills.
+      if (/^[VW]\d/i.test(name)) return "video";
+      if (/^(R\d|PDF\.)/i.test(name)) return "pdf";
+      return "image";
     }
     if (IMAGE_EXT.has(ext)) return "image";
     if (VIDEO_EXT.has(ext)) return "video";
@@ -249,11 +252,18 @@
   const PACS_EXT = new Set(["jpg", "jpeg", "bmp", "mp4", "pdf", "dcm", "dicom"]);
   function pacsSendable(name) { return PACS_EXT.has(path.extname(name)); }
 
-  // UUID-derived UID (DICOM PS3.5 B.2): "2.25." + 128-bit random as decimal.
-  function genUID() {
-    const b = crypto.getRandomValues(new Uint8Array(16));
+  // UUID-style UID (DICOM PS3.5 B.2): "2.25." + 128 bits as decimal. The bits
+  // are a hash of the study folder name, so the same study always gets the
+  // same StudyInstanceUID (across sessions and devices) and a resend lands
+  // in the same PACS study as the same instances. Four seeded FNV-1a rounds:
+  // sync, no crypto.subtle (unavailable on plain http).
+  function studyUID(folderName) {
     let n = 0n;
-    for (const x of b) n = (n << 8n) | BigInt(x);
+    for (const seed of [0x811c9dc5, 0x01000193, 0x9e3779b9, 0x7f4a7c15]) {
+      let h = seed >>> 0;
+      for (let i = 0; i < folderName.length; i++) h = Math.imul(h ^ folderName.charCodeAt(i), 0x01000193) >>> 0;
+      n = (n << 32n) | BigInt(h);
+    }
     return "2.25." + n.toString();
   }
 
@@ -312,8 +322,7 @@
       }
     }
     if (i.PregnancyStatus >= 1 && i.PregnancyStatus <= 4) t.PregnancyStatus = String(i.PregnancyStatus);
-    if (!study.sendUID) study.sendUID = i.StudyInstanceUID || genUID();
-    t.StudyInstanceUID = study.sendUID;
+    t.StudyInstanceUID = i.StudyInstanceUID || studyUID(study.folderName);
     return t;
   }
 

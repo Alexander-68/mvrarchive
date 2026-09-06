@@ -1386,15 +1386,14 @@
     $("#viewer-prev").style.visibility = hasNav ? "" : "hidden";
     $("#viewer-next").style.visibility = hasNav ? "" : "hidden";
 
-    // DICOM is rendered server-side by DCMTK (thumbnail endpoint): the pixel
-    // data needs windowing/decompression a browser cannot do, and a multiframe
-    // instance shows its middle frame. Both image- and video-prefixed .dcm end
-    // up as one still. The endpoint returns the source resolution (bounded to
-    // 4096 px per side) for DICOM, so no w hint is sent.
+    // DICOM: the payload endpoint skips the header and serves the wrapped JPEG
+    // or MP4 in place, so stills show at source resolution and video plays and
+    // seeks natively. Anything else inside a .dcm (uncompressed, JPEG 2000...)
+    // comes back 415, and a still falls back to the DCMTK thumbnail render.
     const ext = MVR.path.extname(m.name);
     const isDicom = ext === "dcm" || ext === "dicom";
     $("#viewer-info").hidden = !isDicom;
-    if (isDicom) return showImage(m, stage, api.thumbURL(m.path));
+    if (isDicom && m.kind !== "video") return showImage(m, stage, api.payloadURL(m.path), api.thumbURL(m.path));
     if (m.kind === "image") return showImage(m, stage);
 
     // Heavy media: stream straight from the read URL (Range-capable), so video
@@ -1402,7 +1401,7 @@
     clearStage();
     if (m.kind === "video") {
       const v = document.createElement("video");
-      v.src = api.fileURL(m.path); v.controls = true; v.autoplay = true; v.playsInline = true; v.loop = true;
+      v.src = isDicom ? api.payloadURL(m.path) : api.fileURL(m.path); v.controls = true; v.autoplay = true; v.playsInline = true; v.loop = true;
       v.onloadedmetadata = () => { m.width = v.videoWidth; m.height = v.videoHeight; if (state.viewer.img === v) updateViewerName(); };
       stage.appendChild(v);
       // Video zooms with the same wheel/pinch machinery as images; it starts fit
@@ -1419,7 +1418,7 @@
   // showImage decodes the next image off-DOM, then swaps it in over the current
   // one instantly (no blank stage, no fade). A sequence token guards against
   // out-of-order loads during fast stepping; zoom/pan carry over.
-  async function showImage(m, stage, url) {
+  async function showImage(m, stage, url, fallbackURL) {
     const seq = ++state.viewer.seq;
     const oldImg = state.viewer.img;
     let placeholder = null;
@@ -1428,7 +1427,7 @@
     const img = document.createElement("img");
     img.draggable = false;
     try {
-      await decodeImg(img, url || api.fileURL(m.path));
+      await decodeImg(img, url || api.fileURL(m.path)).catch(e => fallbackURL ? decodeImg(img, fallbackURL) : Promise.reject(e));
     } catch (e) {
       if (seq === state.viewer.seq) { if (placeholder) placeholder.remove(); stage.appendChild(el("div", "msg", `Could not load ${m.name}`)); }
       return;

@@ -676,12 +676,13 @@
   }
 
   // loadThumbImg loads the server JPEG for an image/video; a video whose
-  // thumbnail the server can't make falls back to browser frame capture.
+  // thumbnail the server can't make (no ffmpeg, or MP4 inside a .dcm) falls
+  // back to browser frame capture.
   function loadThumbImg(img, file, done) {
     img.onload = () => done(true);
     img.onerror = () => {
       if (file.kind !== "video") return done(false);
-      captureVideoFrame(api.fileURL(file.path), 400).then((data) => {
+      captureVideoFrame(api.mediaURL(file.path), 400).then((data) => {
         if (!data) return done(false);
         img.onerror = () => done(false);
         img.src = data;
@@ -1093,7 +1094,7 @@
             };
             img.onerror = () => {
               if (m.kind === "video") {
-                captureVideoFrame(api.fileURL(m.path), 400).then((data) => {
+                captureVideoFrame(api.mediaURL(m.path), 400).then((data) => {
                   if (data) {
                     img.onerror = null;
                     img.src = data;
@@ -1401,7 +1402,7 @@
     clearStage();
     if (m.kind === "video") {
       const v = document.createElement("video");
-      v.src = isDicom ? api.payloadURL(m.path) : api.fileURL(m.path); v.controls = true; v.autoplay = true; v.playsInline = true; v.loop = true;
+      v.src = api.mediaURL(m.path); v.controls = true; v.autoplay = true; v.playsInline = true; v.loop = true;
       v.onloadedmetadata = () => { m.width = v.videoWidth; m.height = v.videoHeight; if (state.viewer.img === v) updateViewerName(); };
       stage.appendChild(v);
       // Video zooms with the same wheel/pinch machinery as images; it starts fit

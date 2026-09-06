@@ -66,6 +66,8 @@
   // The JPEG or MP4 encapsulated in a .dcm, header skipped server-side (415
   // for anything else, e.g. uncompressed pixel data).
   function payloadURL(path) { return "api/files/payload" + q(path); }
+  // The bytes a browser can play: the encapsulated payload for a .dcm, else the file.
+  function mediaURL(path) { return /\.(dcm|dicom)$/i.test(path) ? payloadURL(path) : fileURL(path); }
 
   function isSystemAbsolutePath(path) {
     return /^[A-Za-z]:[\\/]/.test(path) || /^\\\\/.test(path);
@@ -189,5 +191,5 @@
     return d;
   }
 
-  MVR.api = { platform, me, roots, readOnly, list, readText, readBlob, objectURL, fileURL, thumbURL, payloadURL, dicomDump, writeText, mkdir, del, restore, copy, pacs, pacsSend, mimeFor };
+  MVR.api = { platform, me, roots, readOnly, list, readText, readBlob, objectURL, fileURL, thumbURL, payloadURL, mediaURL, dicomDump, writeText, mkdir, del, restore, copy, pacs, pacsSend, mimeFor };
 })();

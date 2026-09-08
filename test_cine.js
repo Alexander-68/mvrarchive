@@ -12,7 +12,7 @@ vm.runInNewContext(fs.readFileSync(__dirname + "/js/cine.js", "utf8"), {
   clearTimeout: id => timers.delete(id),
 });
 const flush = () => new Promise(resolve => setImmediate(resolve));
-const bar = () => ({ children: [{}, { value: 1 }, {}, { value: "auto" }] });
+const bar = () => ({ children: [{}, { value: 1 }, {}, { value: "auto", options: [{}] }] });
 async function tick() {
   assert.equal(timers.size, 1);
   const [id, timer] = [...timers][0]; timers.delete(id); timer.fn(); await flush();
@@ -25,6 +25,7 @@ async function tick() {
   const [button, slider, counter, speed] = controls.children;
   assert.equal(counter.textContent, "Frame 1 / 3");
   assert.equal([...timers.values()][0].ms, 125);
+  assert.equal(speed.options[0].textContent, "Auto (8 fps)");
   await tick(); await tick(); await tick();
   assert.deepEqual(shown, ["blob:0", "blob:1", "blob:2", "blob:0"]);
   button.onclick(); assert.equal(button.textContent, "Play"); assert.equal(timers.size, 0);
@@ -46,12 +47,16 @@ async function tick() {
   const timed = bar();
   const stopTimed = MVR.cine.open("timed.dcm", timed, async () => {}); await flush();
   assert.equal([...timers.values()][0].ms, 40);
+  assert.equal(timed.children[3].options[0].textContent, "Auto (25 fps)");
   await tick(); assert.equal([...timers.values()][0].ms, 80);
+  assert.equal(timed.children[3].options[0].textContent, "Auto (12.5 fps)");
   timed.children[3].value = "500"; timed.children[3].onchange();
   assert.equal([...timers.values()][0].ms, 500);
+  assert.equal(timed.children[3].options[0].textContent, "Auto (12.5 fps)");
   timed.children[3].value = "auto"; timed.children[3].onchange();
   assert.equal([...timers.values()][0].ms, 80);
   await tick(); await tick(); assert.equal([...timers.values()][0].ms, 40);
+  assert.equal(timed.children[3].options[0].textContent, "Auto (25 fps)");
   stopTimed();
 
   for (const bad of [0, -1, null, "40", Infinity, NaN, 1e99]) {

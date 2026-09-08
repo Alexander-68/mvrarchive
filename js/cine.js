@@ -34,7 +34,9 @@
         const schedule = (decodeMS = 0) => {
           clearTimeout(timer);
           const autoMS = frameTimes?.[index];
-          const interval = speed.value === "auto" ? (Number.isFinite(autoMS) && autoMS > 0 && autoMS <= 2147483647 ? autoMS : 125) : Number(speed.value);
+          const autoInterval = Number.isFinite(autoMS) && autoMS > 0 && autoMS <= 2147483647 ? autoMS : 125;
+          speed.options[0].textContent = `Auto (${Number((1000 / autoInterval).toFixed(1))} fps)`;
+          const interval = speed.value === "auto" ? autoInterval : Number(speed.value);
           if (playing && !controller.signal.aborted) timer = setTimeout(() => display((index + 1) % urls.length), Math.max(0, interval - decodeMS));
         };
         async function display(next) {

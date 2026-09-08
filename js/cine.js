@@ -26,8 +26,8 @@
           '<select aria-label="Playback speed"><option value="auto" selected>Auto</option><option value="500">2 fps</option>' +
           '<option value="250">4 fps</option><option value="125">8 fps</option>' +
           '<option value="66.667">15 fps</option><option value="33.333">30 fps</option></select>' +
-          '<button type="button" class="ghost" aria-label="Previous frame" title="Previous frame (Arrow Up)" hidden>↑ Prev</button>' +
-          '<button type="button" class="ghost" aria-label="Next frame" title="Next frame (Arrow Down)" hidden>Next ↓</button>';
+          '<button type="button" class="ghost" aria-label="Previous frame" title="Previous frame (Arrow Up)" hidden><strong class="cine-arrow" aria-hidden="true">↑</strong> Prev</button>' +
+          '<button type="button" class="ghost" aria-label="Next frame" title="Next frame (Arrow Down)" hidden>Next <strong class="cine-arrow" aria-hidden="true">↓</strong></button>';
         const [button, slider, counter, speed, prev, next] = bar.children;
         const frameTimes = data.frameTimesMs;
         slider.max = urls.length;

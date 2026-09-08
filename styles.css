@@ -310,6 +310,7 @@ button.toggle[aria-pressed="true"] { border-color: var(--error); color: var(--er
 .viewer-cine { display: flex; align-items: center; justify-content: center; gap: .7rem; padding: .6rem 1rem; background: var(--surface-2); z-index: 3; flex-wrap: wrap; }
 .viewer-cine input { flex: 1; min-width: 100px; max-width: 600px; }
 .cine-counter { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.cine-arrow { font-size: 1.5em; font-weight: 900; line-height: 1; vertical-align: -.08em; }
 
 /* ---- DICOM tag dialog ------------------------------------------------------ */
 .viewer-left { display: flex; gap: .4rem; align-items: center; }

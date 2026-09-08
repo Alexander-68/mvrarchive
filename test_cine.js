@@ -6,13 +6,13 @@ const timers = new Map(), shown = [], revoked = [];
 let nextTimer = 0, nextURL = 0, signal;
 const MVR = { api: { dicomFrames: async (path, s) => { signal = s; return { frames: ["YQ==", "Yg==", "Yw=="] }; } } };
 vm.runInNewContext(fs.readFileSync(__dirname + "/js/cine.js", "utf8"), {
-  window: { MVR }, AbortController, Uint8Array, atob, Blob,
+  window: { MVR }, AbortController, Uint8Array, atob, Blob, performance: { now: () => 0 },
   URL: { createObjectURL: () => "blob:" + nextURL++, revokeObjectURL: url => revoked.push(url) },
   setTimeout: (fn, ms) => { timers.set(++nextTimer, { fn, ms }); return nextTimer; },
   clearTimeout: id => timers.delete(id),
 });
 const flush = () => new Promise(resolve => setImmediate(resolve));
-const bar = () => ({ children: [{}, { value: 1 }, {}, { value: "250" }] });
+const bar = () => ({ children: [{}, { value: 1 }, {}, { value: "auto" }] });
 async function tick() {
   assert.equal(timers.size, 1);
   const [id, timer] = [...timers][0]; timers.delete(id); timer.fn(); await flush();
@@ -24,7 +24,7 @@ async function tick() {
   await flush();
   const [button, slider, counter, speed] = controls.children;
   assert.equal(counter.textContent, "Frame 1 / 3");
-  assert.equal([...timers.values()][0].ms, 250);
+  assert.equal([...timers.values()][0].ms, 125);
   await tick(); await tick(); await tick();
   assert.deepEqual(shown, ["blob:0", "blob:1", "blob:2", "blob:0"]);
   button.onclick(); assert.equal(button.textContent, "Play"); assert.equal(timers.size, 0);
@@ -41,6 +41,24 @@ async function tick() {
   const cancel = MVR.cine.open("slow.dcm", pending, () => { throw Error("stale frame displayed"); });
   cancel(); resolve({ frames: ["YQ==", "Yg=="] }); await flush();
   assert.equal(nextURL, 3); assert.equal(pending.hidden, true);
+
+  MVR.api.dicomFrames = async () => ({ frames: ["YQ==", "Yg==", "Yw=="], frameTimesMs: [40, 80, 80] });
+  const timed = bar();
+  const stopTimed = MVR.cine.open("timed.dcm", timed, async () => {}); await flush();
+  assert.equal([...timers.values()][0].ms, 40);
+  await tick(); assert.equal([...timers.values()][0].ms, 80);
+  timed.children[3].value = "500"; timed.children[3].onchange();
+  assert.equal([...timers.values()][0].ms, 500);
+  timed.children[3].value = "auto"; timed.children[3].onchange();
+  assert.equal([...timers.values()][0].ms, 80);
+  await tick(); await tick(); assert.equal([...timers.values()][0].ms, 40);
+  stopTimed();
+
+  for (const bad of [0, -1, null, "40", Infinity, NaN, 1e99]) {
+    MVR.api.dicomFrames = async () => ({ frames: ["YQ==", "Yg=="], frameTimesMs: [bad, bad] });
+    const stopBad = MVR.cine.open("bad-timing.dcm", bar(), async () => {}); await flush();
+    assert.equal([...timers.values()][0].ms, 125); stopBad();
+  }
 
   MVR.api.dicomFrames = async () => ({ frames: [] });
   const single = bar(); MVR.cine.open("single.dcm", single, () => assert.fail()); await flush();

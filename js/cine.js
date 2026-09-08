@@ -23,27 +23,31 @@
         bar.innerHTML = '<button type="button" class="ghost">Pause</button>' +
           '<input type="range" min="1" value="1" step="1" aria-label="DICOM frame">' +
           '<span class="cine-counter"></span>' +
-          '<select aria-label="Playback speed"><option value="500">2 fps</option>' +
-          '<option value="250" selected>4 fps</option><option value="125">8 fps</option>' +
+          '<select aria-label="Playback speed"><option value="auto" selected>Auto</option><option value="500">2 fps</option>' +
+          '<option value="250">4 fps</option><option value="125">8 fps</option>' +
           '<option value="66.667">15 fps</option><option value="33.333">30 fps</option></select>';
         const [button, slider, counter, speed] = bar.children;
+        const frameTimes = data.frameTimesMs;
         slider.max = urls.length;
         // Preserve native keyboard operation for the range/select/buttons.
         bar.onkeydown = e => { if (e.key !== "Escape") e.stopPropagation(); };
-        const schedule = () => {
+        const schedule = (decodeMS = 0) => {
           clearTimeout(timer);
-          if (playing && !controller.signal.aborted) timer = setTimeout(() => display((index + 1) % urls.length), Number(speed.value));
+          const autoMS = frameTimes?.[index];
+          const interval = speed.value === "auto" ? (Number.isFinite(autoMS) && autoMS > 0 && autoMS <= 2147483647 ? autoMS : 125) : Number(speed.value);
+          if (playing && !controller.signal.aborted) timer = setTimeout(() => display((index + 1) % urls.length), Math.max(0, interval - decodeMS));
         };
         async function display(next) {
           clearTimeout(timer);
           const token = ++revision;
+          const started = performance.now();
           try {
             await showFrame(urls[next]);
             if (controller.signal.aborted || token !== revision) return;
             index = next;
             slider.value = index + 1;
             counter.textContent = `Frame ${index + 1} / ${urls.length}`;
-            schedule();
+            schedule(performance.now() - started);
           } catch (e) { if (token === revision) fail(e); }
         }
         button.onclick = () => {
@@ -56,7 +60,7 @@
           button.textContent = "Play";
           display(Number(slider.value) - 1);
         };
-        speed.onchange = schedule;
+        speed.onchange = () => schedule();
         playing = true;
         await display(0);
       } catch (e) { fail(e); }

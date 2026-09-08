@@ -7,7 +7,7 @@
   function open(path, bar, showFrame) {
     const controller = new AbortController();
     const urls = [];
-    let timer, playing = false, index = 0, revision = 0;
+    let timer, playing = false, index = 0, requested = 0, revision = 0, handleKey;
     bar.hidden = false;
     bar.textContent = "Preparing frames…";
 
@@ -25,12 +25,14 @@
           '<span class="cine-counter"></span>' +
           '<select aria-label="Playback speed"><option value="auto" selected>Auto</option><option value="500">2 fps</option>' +
           '<option value="250">4 fps</option><option value="125">8 fps</option>' +
-          '<option value="66.667">15 fps</option><option value="33.333">30 fps</option></select>';
-        const [button, slider, counter, speed] = bar.children;
+          '<option value="66.667">15 fps</option><option value="33.333">30 fps</option></select>' +
+          '<button type="button" class="ghost" aria-label="Previous frame" title="Previous frame (Arrow Up)" hidden>↑ Prev</button>' +
+          '<button type="button" class="ghost" aria-label="Next frame" title="Next frame (Arrow Down)" hidden>Next ↓</button>';
+        const [button, slider, counter, speed, prev, next] = bar.children;
         const frameTimes = data.frameTimesMs;
         slider.max = urls.length;
-        // Preserve native keyboard operation for the range/select/buttons.
-        bar.onkeydown = e => { if (e.key !== "Escape") e.stopPropagation(); };
+        // Up/down control frames; other keys retain native control behavior.
+        bar.onkeydown = e => { handleKey(e); if (e.key !== "Escape") e.stopPropagation(); };
         const schedule = (decodeMS = 0) => {
           clearTimeout(timer);
           const autoMS = frameTimes?.[index];
@@ -41,6 +43,7 @@
         };
         async function display(next) {
           clearTimeout(timer);
+          requested = next;
           const token = ++revision;
           const started = performance.now();
           try {
@@ -52,18 +55,29 @@
             schedule(performance.now() - started);
           } catch (e) { if (token === revision) fail(e); }
         }
-        button.onclick = () => {
-          playing = !playing;
+        function setPlaying(value) {
+          playing = value;
           button.textContent = playing ? "Pause" : "Play";
+          prev.hidden = next.hidden = playing;
           schedule();
+        }
+        const stepFrame = delta => display((requested + delta + urls.length) % urls.length);
+        button.onclick = () => setPlaying(!playing);
+        prev.onclick = () => stepFrame(-1);
+        next.onclick = () => stepFrame(1);
+        handleKey = e => {
+          if (document.querySelector("dialog[open]") || (e.key !== "ArrowUp" && e.key !== "ArrowDown")) return;
+          e.preventDefault();
+          if (playing) setPlaying(false);
+          else stepFrame(e.key === "ArrowUp" ? -1 : 1);
         };
+        document.addEventListener("keydown", handleKey, { signal: controller.signal });
         slider.oninput = () => {
-          playing = false;
-          button.textContent = "Play";
+          setPlaying(false);
           display(Number(slider.value) - 1);
         };
         speed.onchange = () => schedule();
-        playing = true;
+        setPlaying(true);
         await display(0);
       } catch (e) { fail(e); }
     })();
@@ -71,6 +85,7 @@
     function fail(e) {
       clearTimeout(timer);
       playing = false;
+      if (handleKey) document.removeEventListener("keydown", handleKey);
       if (!controller.signal.aborted) bar.textContent = "Frame playback unavailable: " + e.message;
     }
     return () => {

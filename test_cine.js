@@ -3,16 +3,29 @@ const fs = require("node:fs");
 const vm = require("node:vm");
 
 const timers = new Map(), shown = [], revoked = [];
+const keyListeners = new Set();
+let dialogOpen = false;
 let nextTimer = 0, nextURL = 0, signal;
 const MVR = { api: { dicomFrames: async (path, s) => { signal = s; return { frames: ["YQ==", "Yg==", "Yw=="] }; } } };
 vm.runInNewContext(fs.readFileSync(__dirname + "/js/cine.js", "utf8"), {
   window: { MVR }, AbortController, Uint8Array, atob, Blob, performance: { now: () => 0 },
+  document: {
+    querySelector: () => dialogOpen,
+    addEventListener: (type, fn, { signal }) => { keyListeners.add(fn); signal.addEventListener("abort", () => keyListeners.delete(fn), { once: true }); },
+    removeEventListener: (type, fn) => keyListeners.delete(fn),
+  },
   URL: { createObjectURL: () => "blob:" + nextURL++, revokeObjectURL: url => revoked.push(url) },
   setTimeout: (fn, ms) => { timers.set(++nextTimer, { fn, ms }); return nextTimer; },
   clearTimeout: id => timers.delete(id),
 });
 const flush = () => new Promise(resolve => setImmediate(resolve));
-const bar = () => ({ children: [{}, { value: 1 }, {}, { value: "auto", options: [{}] }] });
+const bar = () => ({ children: [{}, { value: 1 }, {}, { value: "auto", options: [{}] }, {}, {}] });
+async function key(name) {
+  let prevented = false;
+  for (const fn of keyListeners) fn({ key: name, preventDefault: () => { prevented = true; } });
+  await flush();
+  return prevented;
+}
 async function tick() {
   assert.equal(timers.size, 1);
   const [id, timer] = [...timers][0]; timers.delete(id); timer.fn(); await flush();
@@ -28,12 +41,30 @@ async function tick() {
   assert.equal(speed.options[0].textContent, "Auto (8 fps)");
   await tick(); await tick(); await tick();
   assert.deepEqual(shown, ["blob:0", "blob:1", "blob:2", "blob:0"]);
-  button.onclick(); assert.equal(button.textContent, "Play"); assert.equal(timers.size, 0);
+  const [prev, next] = controls.children.slice(4);
+  assert.equal(prev.hidden, true); assert.equal(next.hidden, true);
+  await key("ArrowDown"); // Playing: pause without advancing.
+  assert.equal(button.textContent, "Play"); assert.equal(timers.size, 0);
+  assert.equal(counter.textContent, "Frame 1 / 3");
+  assert.equal(prev.hidden, false); assert.equal(next.hidden, false);
+  await key("ArrowUp"); assert.equal(counter.textContent, "Frame 3 / 3");
+  await key("ArrowDown"); assert.equal(counter.textContent, "Frame 1 / 3");
+  next.onclick(); await flush(); assert.equal(counter.textContent, "Frame 2 / 3");
+  prev.onclick(); await flush(); assert.equal(counter.textContent, "Frame 1 / 3");
+  // Multiple key presses while decoding must each advance one frame.
+  const one = key("ArrowDown"), two = key("ArrowDown"); await Promise.all([one, two]);
+  assert.equal(counter.textContent, "Frame 3 / 3");
+  button.onclick(); await key("ArrowUp");
+  assert.equal(button.textContent, "Play"); assert.equal(counter.textContent, "Frame 3 / 3");
+  dialogOpen = true; assert.equal(await key("ArrowDown"), false); dialogOpen = false;
+  assert.equal(counter.textContent, "Frame 3 / 3");
   slider.value = 3; slider.oninput(); await flush();
   assert.equal(counter.textContent, "Frame 3 / 3"); assert.equal(timers.size, 0);
   speed.value = "125"; speed.onchange(); button.onclick();
   assert.equal([...timers.values()][0].ms, 125);
+  assert.equal(prev.hidden, true); assert.equal(next.hidden, true);
   stop(); assert.equal(signal.aborted, true); assert.equal(timers.size, 0);
+  assert.equal(keyListeners.size, 0);
   assert.deepEqual(revoked, ["blob:0", "blob:1", "blob:2"]); assert.equal(controls.hidden, true);
 
   let resolve;

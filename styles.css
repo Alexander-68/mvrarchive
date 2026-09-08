@@ -307,6 +307,9 @@ button.toggle[aria-pressed="true"] { border-color: var(--error); color: var(--er
 .viewer-nav.prev { left: .5rem; }
 .viewer-nav.next { right: .5rem; }
 .viewer-nav:hover { background: rgba(66,168,216,.5); }
+.viewer-cine { display: flex; align-items: center; justify-content: center; gap: .7rem; padding: .6rem 1rem; background: var(--surface-2); z-index: 3; flex-wrap: wrap; }
+.viewer-cine input { flex: 1; min-width: 100px; max-width: 600px; }
+.cine-counter { font-variant-numeric: tabular-nums; white-space: nowrap; }
 
 /* ---- DICOM tag dialog ------------------------------------------------------ */
 .viewer-left { display: flex; gap: .4rem; align-items: center; }

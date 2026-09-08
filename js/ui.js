@@ -1318,11 +1318,17 @@
     showMedia();
   }
   function closeViewer() {
+    stopCine();
     state.viewer.open = false;
     $("#viewer").hidden = true;
     clearStage();
     // keep detail focus in sync with where we were
     setMediaFocus(state.viewer.index);
+  }
+  function stopCine() {
+    ++state.viewer.seq;
+    if (state.viewer.stopCine) state.viewer.stopCine();
+    state.viewer.stopCine = null;
   }
   // clearStage tears down the current media but preserves zoom/pan, so stepping
   // between images keeps the same magnification and position.
@@ -1380,6 +1386,7 @@
   }
 
   async function showMedia() {
+    stopCine();
     const m = state.viewer.media[state.viewer.index];
     const stage = $("#viewer-stage");
     updateViewerName();
@@ -1394,7 +1401,16 @@
     const ext = MVR.path.extname(m.name);
     const isDicom = ext === "dcm" || ext === "dicom";
     $("#viewer-info").hidden = !isDicom;
-    if (isDicom && m.kind === "image") return showImage(m, stage, api.payloadURL(m.path), api.thumbURL(m.path));
+    if (isDicom && m.kind === "image") {
+      const still = showImage(m, stage, api.payloadURL(m.path), api.thumbURL(m.path));
+      const seq = state.viewer.seq;
+      await still;
+      if (seq !== state.viewer.seq || !state.viewer.open) return;
+      state.viewer.stopCine = MVR.cine.open(m.path, $("#viewer-cine"), async url => {
+        if (await showImage(m, stage, url) === false) throw new Error("Could not decode frame");
+      });
+      return;
+    }
     if (m.kind === "image") return showImage(m, stage);
 
     // Heavy media: stream straight from the read URL (Range-capable), so video
@@ -1430,7 +1446,7 @@
     try {
       await decodeImg(img, url || api.fileURL(m.path)).catch(e => fallbackURL ? decodeImg(img, fallbackURL) : Promise.reject(e));
     } catch (e) {
-      if (seq === state.viewer.seq) { if (placeholder) placeholder.remove(); stage.appendChild(el("div", "msg", `Could not load ${m.name}`)); }
+      if (seq === state.viewer.seq) { if (placeholder) placeholder.remove(); stage.appendChild(el("div", "msg", `Could not load ${m.name}`)); return false; }
       return;
     }
     if (seq !== state.viewer.seq) return; // superseded by a newer step
@@ -1442,6 +1458,7 @@
     state.viewer.img = img;
     applyZoom();                  // carry over zoom/pan
     if (oldImg) oldImg.remove();  // instant swap
+    return true;
   }
 
   async function showDicomTags() {
@@ -1519,7 +1536,7 @@
   // ---- keyboard -------------------------------------------------------------
   function onKeydown(e) {
     // Don't hijack typing in the search box (except Esc to clear it).
-    if (e.target && e.target.tagName === "INPUT") {
+    if (!state.viewer.open && e.target && e.target.tagName === "INPUT") {
       if (e.key === "Escape") { e.target.value = ""; state.query = ""; applySearch(); e.target.blur(); }
       return;
     }

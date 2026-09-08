@@ -1,6 +1,6 @@
 {
   "name": "mvrarchive",
-  "version": "1.0.260905",
+  "version": "1.0.260909",
   "description": "MVRarchive - imaging study browser",
   "scripts": {
     "build": "node build.js"

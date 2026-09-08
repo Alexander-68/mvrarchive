@@ -37,8 +37,8 @@
     return MIME[MVR.path.extname(name)] || "application/octet-stream";
   }
 
-  async function req(method, url, body, headers) {
-    const opts = { method, headers: {} };
+  async function req(method, url, body, headers, signal) {
+    const opts = { method, headers: {}, signal };
     if (body !== undefined) opts.body = body;
     if (headers) Object.assign(opts.headers, headers);
     const res = await fetch(url, opts);
@@ -49,8 +49,8 @@
     return res;
   }
 
-  async function reqJSON(method, url, body, headers) {
-    const res = await req(method, url, body, headers);
+  async function reqJSON(method, url, body, headers, signal) {
+    const res = await req(method, url, body, headers, signal);
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || `${res.status} ${res.statusText}`);
     return data;
@@ -66,6 +66,7 @@
   // The JPEG, MP4 or PDF encapsulated in a .dcm, header skipped server-side
   // (415 for anything else, e.g. uncompressed pixel data).
   function payloadURL(path) { return "api/files/payload" + q(path); }
+  function dicomFrames(path, signal) { return reqJSON("GET", "api/files/dicom-frames" + q(path), undefined, undefined, signal); }
   // The bytes a browser can play: the encapsulated payload for a .dcm, else the file.
   function mediaURL(path) { return /\.(dcm|dicom)$/i.test(path) ? payloadURL(path) : fileURL(path); }
 
@@ -191,5 +192,5 @@
     return d;
   }
 
-  MVR.api = { platform, me, roots, readOnly, list, readText, readBlob, objectURL, fileURL, thumbURL, payloadURL, mediaURL, dicomDump, writeText, mkdir, del, restore, copy, pacs, pacsSend, mimeFor };
+  MVR.api = { platform, me, roots, readOnly, list, readText, readBlob, objectURL, fileURL, thumbURL, payloadURL, mediaURL, dicomDump, dicomFrames, writeText, mkdir, del, restore, copy, pacs, pacsSend, mimeFor };
 })();

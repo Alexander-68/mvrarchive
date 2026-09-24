@@ -10,6 +10,8 @@ const OUT_FILE = path.join(ROOT_DIR, "mvrarchive.zip");
 
 const BUNDLE_PATHS = [
   "index.html",
+  "omnigate.json",
+  "README.md",
   "styles.css",
   "js",
   "assets"
@@ -36,7 +38,13 @@ function syncVersion() {
     } catch (e) { /* ignore */ }
   }
 
-  // 2. Update index.html
+  // 2. Update omnigate.json
+  const manifestPath = path.join(ROOT_DIR, "omnigate.json");
+  const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+  manifest.version = ver;
+  fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + "\n");
+
+  // 3. Update index.html
   const htmlPath = path.join(ROOT_DIR, "index.html");
   if (fs.existsSync(htmlPath)) {
     let html = fs.readFileSync(htmlPath, "utf8");

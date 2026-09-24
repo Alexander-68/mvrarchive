@@ -1011,7 +1011,8 @@
   async function openStudy(study) {
     state.current = study;
     showStudy();
-    $("#detail-title").textContent = S.displayName(study);
+    const title = S.displayName(study);
+    $("#detail-title").textContent = title === study.folderName ? title : `${title} · ${study.folderName}`;
 
     if (!study.hydrated) {
       $("#detail-sub").textContent = "Loading…";

@@ -37,5 +37,5 @@ assert.strictEqual(S.dicomTags({ folderName: "x", info: { PatientID: "MRN9", Stu
 assert.strictEqual(S.mediaKind("V0001.dcm"), "video");
 assert.strictEqual(S.mediaKind("VLp.X.1.2.276.0.7230010.903.dcm"), "image");
 assert.strictEqual(S.mediaKind("MRBRAIN.DCM"), "image");
-assert.ok(S.pacsSendable("I0001.jpg") && S.pacsSendable("I0002.dcm") && !S.pacsSendable("V0001.mp4"));
+assert.ok(S.pacsSendable("I0001.jpg") && S.pacsSendable("I0002.dcm") && S.pacsSendable("V0001.mp4") && S.pacsSendable("R0001.pdf") && !S.pacsSendable("V0001.mov"));
 console.log("ok");

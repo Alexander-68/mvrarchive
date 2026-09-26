@@ -326,16 +326,6 @@
     }
   }
 
-  async function syncPlatform() {
-    try {
-      const p = await api.platform();
-      if (p && p.platform === "omnigate") {
-        if (p.theme) applyTheme(p.theme);
-        if (p.zoom) applyZoom(p.zoom);
-      }
-    } catch (e) { /* ignore */ }
-  }
-
   function setupThemeBridge() {
     window.addEventListener("message", (e) => {
       if (!e.data) return;
@@ -1671,7 +1661,6 @@
   // ---- boot -----------------------------------------------------------------
   async function boot() {
     setupThemeBridge();
-    await syncPlatform();
     await initUser();
     syncDetailStickyOffset();
     setupFieldTooltips();

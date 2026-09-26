@@ -3,7 +3,7 @@
 // session expired; we bounce to the login page.
 //
 // Endpoints (see HOW_TO_MAKE_OMNIGATE_WEB_APPS.md):
-//   GET    /api/platform               -> { platform, product, version, theme, zoom }
+//   GET    /api/platform               -> { platform, product, version, theme, zoom, inactivityMinutes }
 //   GET    /api/me                     -> { username, role }
 //   GET    /api/roots                  -> { roots: [{ name, writable }, ...] }
 //   GET    /api/files?path=            -> { path, entries: [{name,is_dir,size,mod_time}] }
@@ -88,11 +88,6 @@
     if (!root) return "";
     if (root.name) return sharePath(root.name);
     return normalizeRoot(root.path);
-  }
-
-  // /api/platform reports gateway display settings (theme/zoom)
-  async function platform() {
-    return reqJSON("GET", "api/platform").catch(() => ({}));
   }
 
   // /api/me reports current authenticated user info
@@ -192,5 +187,5 @@
     return d;
   }
 
-  MVR.api = { platform, me, roots, readOnly, list, readText, readBlob, objectURL, fileURL, thumbURL, payloadURL, mediaURL, dicomDump, dicomFrames, writeText, mkdir, del, restore, copy, pacs, pacsSend, mimeFor };
+  MVR.api = { me, roots, readOnly, list, readText, readBlob, objectURL, fileURL, thumbURL, payloadURL, mediaURL, dicomDump, dicomFrames, writeText, mkdir, del, restore, copy, pacs, pacsSend, mimeFor };
 })();

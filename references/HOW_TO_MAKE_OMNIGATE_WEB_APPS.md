@@ -39,8 +39,9 @@ per-app **gateway**, which:
 - forces every app session to the **User** role — an app can never act as admin,
   even if an admin signs in to it.
 
-Because auth is a cookie the JS cannot read, your code's only auth concern is
-handling a **401** on an API call (the session expired): redirect to `__login`.
+Because auth is a cookie the JS cannot read, handle a **401** on an API call
+(the session expired) by redirecting to `__login`. Sign out after browser
+inactivity too; do not wait for another API call.
 See `api()` in `xplore/app.js`.
 
 ## Required app behaviours
@@ -56,7 +57,8 @@ An app you generate MUST:
    </form>
    ```
 
-   The gateway clears the cookie and redirects to the login page.
+   The gateway clears the cookie, redirects to the login page, and starts its
+   screensaver. Keyboard input or a click wakes sign-in.
 
 2. **Handle session expiry.** When any `api/*` call returns `401`, send the
    browser to `__login` rather than showing a broken UI:
@@ -65,10 +67,20 @@ An app you generate MUST:
    if (res.status === 401) { location.href = "__login"; return; }
    ```
 
-3. **Discover shares before touching files.** Never hard-code a path. Call
+3. **Sign out after browser inactivity and follow gateway theme.** Include
+   shared script in `<head>` and keep Sign Out form above. It reads
+   `inactivityMinutes`, `theme`, and `zoom` from `api/platform`, submits logout
+   form when idle, and refreshes display settings when a hidden tab returns.
+   Define both palettes in CSS using `html[data-theme="light"]`.
+
+   ```html
+   <script src="__omnigate/app-session.js"></script>
+   ```
+
+4. **Discover shares before touching files.** Never hard-code a path. Call
    `GET /api/roots` first and build navigation from the returned shares.
 
-4. **Honour the `?path=` deep-link** (see *Start path* below).
+5. **Honour the `?path=` deep-link** (see *Start path* below).
 
 ## API reference
 
@@ -78,7 +90,7 @@ relative to app prefix (use `api/...` in browser URLs). `path` values are
 
 | Method | Path | Purpose | Notes |
 |--------|------|---------|-------|
-| `GET` | `/api/platform` | Identify the gateway and read its display settings | **No session needed.** Returns `{"platform":"omnigate","product","version","theme","zoom"}` |
+| `GET` | `/api/platform` | Identify the gateway and read display/session settings | **No session needed.** Returns `{"platform":"omnigate","product","version","theme","zoom","inactivityMinutes"}` |
 | `GET` | `/api/me` | Current authenticated user identity | Returns `{"username","role"}` |
 | `GET` | `/api/roots` | List available shares | Returns `{"roots":[{"name","writable"}]}` |
 | `GET` | `/api/files?path=` | List a directory | Returns `{"path","entries":[{name,is_dir,size,mod_time}]}`. Add `&deleted=1` to list that directory's **deleted** entries instead: each also carries `original_name` and `deleted_at`; `name` is the on-disk trash name to use in paths |
@@ -95,7 +107,7 @@ relative to app prefix (use `api/...` in browser URLs). `path` values are
 | `GET` | `/api/pacs` | List PACS servers an admin registered | Returns `{"servers":[{"name","host","port","aet"}],"callingAET"}`; empty list when none |
 | `POST` | `/api/pacs/{name}/send` | Send a file to the named PACS (DICOM C-STORE) | Body `{"path":"/Share/file","tags":{"PatientName":"Doe^Jane",...}}`. See *Send to PACS* below. `200 {ok:true,wrapped}` on success, `502` when the PACS refused (`{error,exitCode,output}`), `503` without DCMTK |
 | `POST` | `/__login` | Sign in (form post) | Gateway-rendered page; you rarely call this directly |
-| `POST` | `/__logout` | End the session | Use for the Sign Out control above |
+| `POST` | `/__logout` | End the session | Clears session and redirects to login screensaver |
 
 Error responses are JSON `{"error": "..."}` with a matching HTTP status:
 
@@ -126,9 +138,9 @@ if (p.platform === "omnigate") {
 }
 ```
 
-The bundled `apps/xplore` demo does exactly this: the fetch sits inline in its
-`<head>` and its stylesheet carries an `html[data-theme="light"]` block, so the
-gateway's dark/light choice and zoom carry into the app.
+MVRarchive loads `__omnigate/app-session.js` from `<head>` and its stylesheet
+carries an `html[data-theme="light"]` block. Shared script also applies
+`inactivityMinutes` and signs out after that many minutes without input.
 
 The endpoint is also served on the gateway's own origin (`/api/platform`) with
 `Access-Control-Allow-Origin: *`, which is how a **linked external** app — one

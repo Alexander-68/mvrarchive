@@ -7,16 +7,7 @@
   <meta name="description" content="Imaging study browser">
   <link rel="icon" type="image/svg+xml" href="assets/icons/favicon.svg">
   <link rel="stylesheet" href="styles.css">
-  <!-- Follow the gateway's look: /api/platform is unauthenticated, so this runs
-       before login too. Inline and in <head> so the theme lands as early as the
-       reply allows. Standalone (no OmniGate) keeps the dark default. -->
-  <script>
-    fetch("api/platform").then((r) => r.json()).then((p) => {
-      if (p.platform !== "omnigate") return;
-      if (p.theme) document.documentElement.dataset.theme = p.theme;
-      if (p.zoom) document.documentElement.style.zoom = p.zoom + "%";
-    }).catch(() => {});
-  </script>
+  <script src="__omnigate/app-session.js"></script>
 </head>
 <body>
   <header class="topbar">
@@ -24,7 +15,7 @@
       <img src="assets/icons/ic_study.svg" class="brand-icon" alt="">
       <div class="brand-text">
         <strong>MVRarchive</strong>
-        <span class="app-version muted">1.0.260924</span>
+        <span class="app-version muted">1.0.260926</span>
       </div>
     </div>
 

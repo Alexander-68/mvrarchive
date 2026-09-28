@@ -67,6 +67,20 @@
   // (415 for anything else, e.g. uncompressed pixel data).
   function payloadURL(path) { return "api/files/payload" + q(path); }
   function dicomFrames(path, signal) { return reqJSON("GET", "api/files/dicom-frames" + q(path), undefined, undefined, signal); }
+  // <img> errors hide HTTP response bodies. Probe only after a failed DICOM
+  // load; request one byte and cancel successful bodies rather than downloading
+  // an entire encapsulated video/image merely to diagnose an error.
+  async function dicomLoadError(path) {
+    try {
+      const res = await req("GET", payloadURL(path), undefined, { Range: "bytes=0-0" }, AbortSignal.timeout(5000));
+      if (res.status === 403) {
+        const data = await res.json();
+        return data.error === "DICOM is not activated" ? data.error : "";
+      }
+      if (res.body) await res.body.cancel();
+    } catch (_) { /* retain generic load error for network/other failures */ }
+    return "";
+  }
   // The bytes a browser can play: the encapsulated payload for a .dcm, else the file.
   function mediaURL(path) { return /\.(dcm|dicom)$/i.test(path) ? payloadURL(path) : fileURL(path); }
 
@@ -187,5 +201,5 @@
     return d;
   }
 
-  MVR.api = { me, roots, readOnly, list, readText, readBlob, objectURL, fileURL, thumbURL, payloadURL, mediaURL, dicomDump, dicomFrames, writeText, mkdir, del, restore, copy, pacs, pacsSend, mimeFor };
+  MVR.api = { me, roots, readOnly, list, readText, readBlob, objectURL, fileURL, thumbURL, payloadURL, mediaURL, dicomDump, dicomFrames, dicomLoadError, writeText, mkdir, del, restore, copy, pacs, pacsSend, mimeFor };
 })();

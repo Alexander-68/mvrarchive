@@ -7,3 +7,7 @@ For AI coding agents tailoring UI: `index.html` defines screens and controls; `s
 UI principles: study cards keep identifying details visible; detail view separates media from metadata; viewer provides keyboard navigation and clear back path. Respect read-only shares, preserve deleted/live distinction, and expose PACS errors. OmniGate's `__omnigate/app-session.js` follows dark/light theme and zoom, signs out after gateway inactivity limit, and opens screensaver over sign-in. Keep Sign out visible.
 
 Build with `node build.js` or `build.ps1`. Both bundles include root `index.html`, `omnigate.json`, and `README.md`.
+
+When a DICOM image fails to load and gateway reports inactive DICOM, viewer shows
+`Could not load filename.dcm: DICOM is not activated`. Other load errors keep
+generic message. Admin activates AKDICOM in OmniGate Settings.

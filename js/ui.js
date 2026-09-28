@@ -1437,7 +1437,9 @@
     try {
       await decodeImg(img, url || api.fileURL(m.path)).catch(e => fallbackURL ? decodeImg(img, fallbackURL) : Promise.reject(e));
     } catch (e) {
-      if (seq === state.viewer.seq) { if (placeholder) placeholder.remove(); stage.appendChild(el("div", "msg", `Could not load ${m.name}`)); return false; }
+      if (seq !== state.viewer.seq) return;
+      const reason = /\.(dcm|dicom)$/i.test(m.name) ? await api.dicomLoadError(m.path) : "";
+      if (seq === state.viewer.seq) { if (placeholder) placeholder.remove(); stage.appendChild(el("div", "msg", `Could not load ${m.name}${reason ? ": " + reason : ""}`)); return false; }
       return;
     }
     if (seq !== state.viewer.seq) return; // superseded by a newer step

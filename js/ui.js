@@ -1244,7 +1244,26 @@
 
   function syncDetailStickyOffset() {
     const topbar = $(".topbar");
-    if (topbar) document.documentElement.style.setProperty("--topbar-height", `${topbar.offsetHeight}px`);
+    if (!topbar) return;
+    const steps = ["hide-storage", "hide-user", "hide-brand", "compact-storage"];
+    topbar.classList.remove(...steps);
+    for (const step of steps) {
+      const edge = topbar.getBoundingClientRect().right - parseFloat(getComputedStyle(topbar).paddingRight);
+      if ($(".topbar-user").getBoundingClientRect().right <= edge + 1) break;
+      if (step === "compact-storage") {
+        const select = $("#root-select");
+        const measure = select.cloneNode(false);
+        measure.removeAttribute("id");
+        measure.style.cssText = "position:fixed; visibility:hidden; min-width:0; width:auto;";
+        measure.style.font = getComputedStyle(select).font;
+        if (select.selectedOptions[0]) measure.append(select.selectedOptions[0].cloneNode(true));
+        document.body.append(measure);
+        topbar.style.setProperty("--storage-width", `${Math.min(select.offsetWidth, measure.offsetWidth)}px`);
+        measure.remove();
+      }
+      topbar.classList.add(step);
+    }
+    document.documentElement.style.setProperty("--topbar-height", `${topbar.offsetHeight}px`);
   }
 
   // ---- selection ------------------------------------------------------------
@@ -1665,6 +1684,12 @@
     setupThemeBridge();
     await initUser();
     syncDetailStickyOffset();
+    const topbar = $(".topbar");
+    new ResizeObserver(syncDetailStickyOffset).observe(topbar);
+    new MutationObserver(syncDetailStickyOffset).observe(topbar, {
+      subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ["hidden"],
+    });
+    topbar.addEventListener("change", syncDetailStickyOffset);
     setupFieldTooltips();
 
     $("#btn-refresh").onclick = () => loadArchive(state.root);

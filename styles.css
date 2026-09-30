@@ -77,6 +77,7 @@ html[data-theme="light"] .card-sub .si img {
 /* ---- top bar -------------------------------------------------------------- */
 .topbar {
   display: flex; align-items: center; gap: 1rem;
+  white-space: nowrap;
   padding: .6rem 1rem;
   background: var(--surface-2);
   border-bottom: 1px solid var(--line);
@@ -112,6 +113,12 @@ html[data-theme="light"] .card-sub .si img {
 .user-name { font-size: .88rem; font-weight: 600; color: var(--text); }
 .user-name:empty { display: none; }
 .logout { margin: 0; }
+.topbar .brand, .topbar-user, .topbar-controls > :not(.search) { flex-shrink: 0; }
+.topbar .search { min-width: 140px; }
+.topbar.hide-storage .storage > span,
+.topbar.hide-user .user-name,
+.topbar.hide-brand .brand-text { display: none; }
+.topbar.compact-storage #root-select { min-width: 0; width: var(--storage-width); }
 
 .field { display: flex; align-items: center; gap: .4rem; color: var(--muted); font-size: .8rem; }
 

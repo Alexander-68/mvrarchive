@@ -51,7 +51,7 @@
   const MEDIA_PREVIEW_CONCURRENCY = 4;
 
   // ---- scroll tracking & multi-tier lazy load scheduler ---------------------
-  let lastScrollY = window.scrollY || 0;
+  let lastScrollY = $("#view-archive").scrollTop;
   let scrollDirection = "down"; // "down" | "up"
   let isScrolling = false;
   let scrollStopTimer = null;
@@ -61,7 +61,7 @@
   let fieldTooltipTimer = null;
 
   function onScroll() {
-    const currentY = window.scrollY || 0;
+    const currentY = $("#view-archive").scrollTop;
     if (currentY > lastScrollY + 2) {
       scrollDirection = "down";
     } else if (currentY < lastScrollY - 2) {
@@ -83,7 +83,7 @@
     }, 130);
   }
 
-  window.addEventListener("scroll", onScroll, { passive: true });
+  $("#view-archive").addEventListener("scroll", onScroll, { passive: true });
 
   // Compute element zone relative to current viewport and scroll direction:
   // 1 = Visible (on screen)

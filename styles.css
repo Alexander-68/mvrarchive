@@ -149,6 +149,7 @@ button.toggle[aria-pressed="true"] { border-color: var(--error); color: var(--er
 
 /* ---- views ---------------------------------------------------------------- */
 .view { padding: 1rem 1.25rem 3rem; }
+#view-archive { height: 100%; overflow-y: auto; }
 
 /* ---- archive grid --------------------------------------------------------- */
 .grid {
@@ -157,7 +158,7 @@ button.toggle[aria-pressed="true"] { border-color: var(--error); color: var(--er
 }
 
 .card {
-  scroll-margin-top: calc(var(--topbar-height, 0px) + 1rem); /* clear the fixed top bar */
+  scroll-margin-top: 1rem;
   background: var(--bg-2); border: 2px solid var(--line);
   border-radius: var(--radius); overflow: hidden; cursor: pointer;
   display: flex; flex-direction: column;

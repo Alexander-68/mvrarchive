@@ -49,6 +49,7 @@
 
   const CARD_HYDRATE_CONCURRENCY = 4;
   const MEDIA_PREVIEW_CONCURRENCY = 4;
+  const previewControllers = new Map();
 
   // ---- scroll tracking & multi-tier lazy load scheduler ---------------------
   let lastScrollY = $("#view-archive").scrollTop;
@@ -61,7 +62,7 @@
   let fieldTooltipTimer = null;
 
   function onScroll() {
-    const currentY = $("#view-archive").scrollTop;
+    const currentY = (state.view === "archive" ? $("#view-archive") : $(".media-wrap")).scrollTop;
     if (currentY > lastScrollY + 2) {
       scrollDirection = "down";
     } else if (currentY < lastScrollY - 2) {
@@ -84,6 +85,7 @@
   }
 
   $("#view-archive").addEventListener("scroll", onScroll, { passive: true });
+  $(".media-wrap").addEventListener("scroll", onScroll, { passive: true });
 
   // Compute element zone relative to current viewport and scroll direction:
   // 1 = Visible (on screen)
@@ -127,7 +129,7 @@
   let cardVisibleObserver = null;
 
   function enqueueCard(study, priority, pump = true) {
-    if (study.hydrated || study._loading) return;
+    if (study._thumbError || (study.hydrated && study._thumbLoaded) || study._loading) return;
     study._priority = Math.min(study._priority || 99, priority);
     if (!cardQueue.includes(study)) {
       cardQueue.push(study);
@@ -146,7 +148,7 @@
     // keep hydrating every remaining study in the background (lowest priority).
     if (!cardQueue.length && state.query) {
       for (const s of state.studies) {
-        if (!s.hydrated && !s._loading && s.cardEl) enqueueCard(s, 4, false);
+        if (!s.hydrated && !s._loading && !s._thumbError && s.cardEl) enqueueCard(s, 4, false);
       }
     }
     if (!cardQueue.length) return;
@@ -163,7 +165,7 @@
       }
 
       cardQueue.shift();
-      if (topStudy.hydrated || topStudy._loading) continue;
+      if ((topStudy.hydrated && (topStudy._thumbLoaded || topStudy._thumbError)) || topStudy._loading) continue;
       // Re-check at dispatch time: the user may have scrolled past it while queued.
       if (!state.query && !getElementZone(topStudy.cardEl)) continue;
 
@@ -172,15 +174,21 @@
 
       (async () => {
         try {
-          await S.hydrate(topStudy);
-          fillCard(topStudy);
+          if (!topStudy.hydrated) await S.hydrate(topStudy);
+          await fillCard(topStudy);
           if (state.query) applySearch();
           scheduleResort();
         } catch (e) {
-          /* ignore error */
+          topStudy._thumbError = true;
+          const thumb = topStudy.cardEl?.querySelector(".card-thumb");
+          if (thumb) {
+            thumb.classList.remove("loading");
+            previewRetry(thumb, e, () => { topStudy._thumbError = false; enqueueCard(topStudy, 1); });
+          }
         } finally {
           topStudy._loading = false;
           activeCardWorkers--;
+          if (state.view === "archive" && !topStudy._thumbLoaded && !topStudy._thumbError && getElementZone(topStudy.cardEl) === 1) enqueueCard(topStudy, 1, false);
           pumpCardQueue();
         }
       })();
@@ -196,7 +204,7 @@
       for (const entry of entries) {
         if (entry.isIntersecting) {
           const study = entry.target._study;
-          if (study && !study.hydrated) {
+          if (study && !(study.hydrated && study._thumbLoaded)) {
             study._priority = 1;
             enqueueCard(study, 1);
           }
@@ -214,7 +222,7 @@
   let mediaVisibleObserver = null;
 
   function enqueueMedia(item, priority, pump = true) {
-    if (item.media._previewLoaded || item.media._previewLoading) return;
+    if (item.media._previewLoaded || item.media._previewLoading || item.media._previewError) return;
     item.priority = Math.min(item.priority || 99, priority);
     if (!mediaQueue.includes(item)) {
       mediaQueue.push(item);
@@ -250,12 +258,13 @@
       (async () => {
         try {
           await topItem.loadFn();
-          topItem.media._previewLoaded = true;
+          if (topItem.media.tileEl === topItem.tile) topItem.media._previewLoaded = true;
         } catch (e) {
           /* ignore */
         } finally {
-          topItem.media._previewLoading = false;
+          if (topItem.media.tileEl === topItem.tile) topItem.media._previewLoading = false;
           activeMediaWorkers--;
+          if (topItem.media.tileEl === topItem.tile && !topItem.media._previewLoaded && !topItem.media._previewError && getElementZone(topItem.media.tileEl) === 1) enqueueMedia(topItem, 1, false);
           pumpMediaQueue();
         }
       })();
@@ -285,12 +294,15 @@
   // Scan all items in the active view to assign Priority 1 (visible),
   // Priority 2 (1.5x ahead), and Priority 3 (1.5x behind)
   function scanAndScheduleLazyLoads() {
+    for (const [controller, element] of previewControllers) {
+      if (!element.isConnected || getElementZone(element) !== 1) controller.abort();
+    }
     if (state.view === "archive") {
       // Drop stale preloads, then queue current viewport before nearby cards.
       cardQueue.length = 0;
       const vis = visibleStudies();
       for (const study of vis) {
-        if (study.hydrated || study._loading || !study.cardEl) continue;
+        if ((study.hydrated && (study._thumbLoaded || study._thumbError)) || study._loading || !study.cardEl) continue;
         const zone = getElementZone(study.cardEl);
         if (zone > 0) {
           study._priority = zone;
@@ -302,7 +314,7 @@
       // Drop stale preloads, then queue current viewport before nearby tiles.
       mediaQueue.length = 0;
       for (const m of state.current.media) {
-        if (m._previewLoaded || m._previewLoading || !m.tileEl) continue;
+        if (m._previewLoaded || m._previewLoading || m._previewError || !m.tileEl) continue;
         const zone = getElementZone(m.tileEl);
         if (zone > 0 && m.tileEl._queueItem) {
           m.tileEl._queueItem.priority = zone;
@@ -433,6 +445,7 @@
   // ---- view switching -------------------------------------------------------
   function showArchive() {
     state.view = "archive";
+    scanAndScheduleLazyLoads();
     $("#view-study").hidden = true;
     $("#view-archive").hidden = false;
     // The study just left (possibly reached via Prev/Next) becomes the focused
@@ -448,6 +461,7 @@
     state.view = "study";
     $("#view-archive").hidden = true;
     $("#view-study").hidden = false;
+    scanAndScheduleLazyLoads();
   }
 
   // ---- archive grid ---------------------------------------------------------
@@ -627,58 +641,71 @@
     if (dob) sub.appendChild(subItem("ic_birthday", dob));
     if (state.deleted && study.deletedAt) sub.appendChild(el("span", "si deleted-at", "Deleted " + S.formatDate(new Date(study.deletedAt))));
 
-    fillCardThumb(study);
+    return fillCardThumb(study);
   }
 
   // Large cards show four evenly spaced stills; smaller cards keep one preview.
-  function fillCardThumb(study) {
+  async function fillCardThumb(study) {
+    study._thumbController?.abort();
+    study._thumbLoaded = false;
     const thumb = study.cardEl && study.cardEl.querySelector(".card-thumb");
-    if (!thumb) return;
-    thumb.innerHTML = "";
+    if (!thumb || state.view !== "archive" || !getElementZone(study.cardEl)) return;
+    const controller = new AbortController();
+    study._thumbController = controller;
+    previewControllers.set(controller, thumb);
+    study._thumbError = false;
+    thumb.replaceChildren();
     thumb.classList.add("loading");
     thumb.classList.remove("quad");
-    const visual = study.media.filter((m) => m.kind === "image" || m.kind === "video");
+    const visual = study.media.filter(m => m.kind === "image" || m.kind === "video");
+    let selected = [study.thumbFile || visual[0]].filter(Boolean);
     if (state.cardSize >= QUAD_CARD_SIZE && visual.length >= 4) {
       thumb.classList.add("quad");
-      let remaining = 4;
-      for (let i = 0; i < 4; i++) {
-        const img = el("img", "thumb-img");
-        thumb.appendChild(img);
-        loadThumbImg(img, visual[Math.round(i * (visual.length - 1) / 3)], (ok) => {
-          if (!ok) img.remove();
-          if (!--remaining) thumb.classList.remove("loading");
-        });
+      selected = Array.from({ length: 4 }, (_, i) => visual[Math.round(i * (visual.length - 1) / 3)]);
+    }
+    if (!selected.length) addPlaceholder(thumb);
+    const results = await Promise.all(selected.map(async file => {
+      const img = el("img", "thumb-img");
+      thumb.appendChild(img);
+      try { await loadThumbImg(img, file, controller.signal); return true; }
+      catch (err) {
+        img.remove();
+        if (!controller.signal.aborted) {
+          study._thumbError = true;
+          previewRetry(thumb, err, () => { study._thumbError = false; enqueueCard(study, 1); });
+        }
+        return false;
       }
-      return;
-    }
-
-    const targetFile = study.thumbFile || visual[0];
-    if (!targetFile) {
-      thumb.classList.remove("loading");
-      addPlaceholder(thumb);
-      return;
-    }
-    const img = el("img", "thumb-img");
-    loadThumbImg(img, targetFile, (ok) => {
-      thumb.classList.remove("loading");
-      if (ok) thumb.appendChild(img); else addPlaceholder(thumb);
-    });
+    }));
+    previewControllers.delete(controller);
+    if (study._thumbController !== controller) return;
+    study._thumbLoaded = !controller.signal.aborted && results.every(Boolean);
+    thumb.classList.remove("loading");
   }
 
-  // loadThumbImg loads the server JPEG for an image/video; a video whose
-  // thumbnail the server can't make (no ffmpeg, or MP4 inside a .dcm) falls
-  // back to browser frame capture.
-  function loadThumbImg(img, file, done) {
-    img.onload = () => done(true);
-    img.onerror = () => {
-      if (file.kind !== "video") return done(false);
-      captureVideoFrame(api.mediaURL(file.path), 400).then((data) => {
-        if (!data) return done(false);
-        img.onerror = () => done(false);
-        img.src = data;
-      });
-    };
-    img.src = api.thumbURL(file.path, 400);
+  async function loadThumbImg(img, file, signal) {
+    let url;
+    try {
+      try { url = URL.createObjectURL(await api.thumbnail(file.path, 400, signal)); }
+      catch (err) {
+        // Busy/denied requests never trigger a full video download.
+        if (signal.aborted || file.kind !== "video" || ![415, 422].includes(err.status)) throw err;
+        url = await captureVideoFrame(api.mediaURL(file.path), 400);
+        if (!url) throw Error("Video preview unavailable");
+      }
+      signal.throwIfAborted();
+      img.src = url;
+      await img.decode();
+      signal.throwIfAborted();
+    } finally { if (url?.startsWith("blob:")) URL.revokeObjectURL(url); }
+  }
+
+  function previewRetry(container, err, retry) {
+    if (container.querySelector(".preview-retry")) return;
+    const button = el("button", "preview-retry", "Retry preview");
+    button.title = err.message;
+    button.onclick = ev => { ev.stopPropagation(); button.remove(); retry(); };
+    container.appendChild(button);
   }
 
   function addPlaceholder(thumb) {
@@ -1062,6 +1089,8 @@
     study.media.forEach((m, idx) => {
       const tile = el("div", "media-tile");
       m.tileEl = tile;
+      m._previewController?.abort();
+      m._previewError = false;
       m._previewLoaded = false;
       m._previewLoading = false;
 
@@ -1075,33 +1104,26 @@
       tile.appendChild(ic);
 
       const loadPreview = async () => {
-        if (m.kind === "image" || m.kind === "video") {
-          return new Promise((resolve) => {
-            const img = el("img");
-            img.onload = () => {
-              tile.insertBefore(img, tile.firstChild);
-              ic.remove();
-              resolve();
-            };
-            img.onerror = () => {
-              if (m.kind === "video") {
-                captureVideoFrame(api.mediaURL(m.path), 400).then((data) => {
-                  if (data) {
-                    img.onerror = null;
-                    img.src = data;
-                  }
-                  resolve();
-                });
-              } else {
-                resolve();
-              }
-            };
-            img.src = api.thumbURL(m.path, 400);
-          });
-        }
+        if (m.kind !== "image" && m.kind !== "video") return;
+        const controller = new AbortController();
+        m._previewController = controller;
+        previewControllers.set(controller, tile);
+        const img = el("img");
+        try {
+          await loadThumbImg(img, m, controller.signal);
+          if (!tile.isConnected) throw new DOMException("View changed", "AbortError");
+          tile.insertBefore(img, tile.firstChild);
+          ic.remove();
+        } catch (err) {
+          if (!controller.signal.aborted) {
+            m._previewError = true;
+            previewRetry(tile, err, () => { m._previewError = false; enqueueMedia(tile._queueItem, 1); });
+          }
+          throw err;
+        } finally { previewControllers.delete(controller); }
       };
 
-      const queueItem = { media: m, loadFn: loadPreview, priority: 1 };
+      const queueItem = { media: m, tile, loadFn: loadPreview, priority: 1 };
       tile._queueItem = queueItem;
 
       if (mediaVisibleObserver) {

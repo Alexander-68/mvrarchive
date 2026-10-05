@@ -63,6 +63,45 @@
   // <video> seeks natively); thumbnail returns a small JPEG for images.
   function fileURL(path) { return "api/files/read" + q(path); }
   function thumbURL(path, w) { return "api/files/thumbnail" + q(path) + (w ? `&w=${w}` : ""); }
+  function retryWait(ms, signal) {
+    signal?.throwIfAborted();
+    return new Promise((resolve, reject) => {
+      const finish = () => { signal?.removeEventListener("abort", abort); resolve(); };
+      const timer = setTimeout(finish, ms);
+      const abort = () => { clearTimeout(timer); signal.removeEventListener("abort", abort); reject(signal.reason); };
+      signal?.addEventListener("abort", abort, { once: true });
+    });
+  }
+  // A busy renderer is temporary, never a missing preview. Callers cancel
+  // when their view goes away; only permanent failures reach the Retry UI.
+  async function thumbnail(path, width, signal) {
+    for (;;) {
+      signal?.throwIfAborted();
+      let res;
+      const attemptSignal = signal ? AbortSignal.any([signal, AbortSignal.timeout(45000)]) : AbortSignal.timeout(45000);
+      try { res = await req("GET", thumbURL(path, width), undefined, undefined, attemptSignal); }
+      catch (err) {
+        if (signal?.aborted || err.message === "session expired") throw err;
+        await retryWait(1000, signal);
+        continue;
+      }
+      if ([429, 502, 503, 504].includes(res.status)) {
+        const seconds = Math.min(5, Math.max(0.1, Number(res.headers.get("Retry-After")) || 1));
+        await res.body?.cancel();
+        await retryWait(seconds * 1000, signal);
+        continue;
+      }
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw Object.assign(new Error(data.error || `Preview failed (${res.status})`), { status: res.status });
+      }
+      try { return await res.blob(); }
+      catch (err) {
+        signal?.throwIfAborted();
+        await retryWait(1000, signal);
+      }
+    }
+  }
   // The JPEG, MP4 or PDF encapsulated in a .dcm, header skipped server-side
   // (415 for anything else, e.g. uncompressed pixel data).
   function payloadURL(path) { return "api/files/payload" + q(path); }
@@ -146,7 +185,7 @@
           await new Promise(resolve => setTimeout(resolve, seconds * 1000));
           continue;
         }
-        d = await res.json().catch(() => ({}));
+        d = await res.json().catch(err => { if (res.ok) throw err; return {}; });
         if (!res.ok) throw new Error(d.error || `${res.status} ${res.statusText}`);
         break;
       }
@@ -230,5 +269,5 @@
     return d;
   }
 
-  MVR.api = { me, roots, readOnly, list, readText, readBlob, objectURL, fileURL, thumbURL, payloadURL, mediaURL, dicomDump, dicomFrames, dicomLoadError, writeText, mkdir, del, restore, copy, pacs, pacsSend, mimeFor };
+  MVR.api = { me, roots, readOnly, list, readText, readBlob, objectURL, fileURL, thumbURL, thumbnail, payloadURL, mediaURL, dicomDump, dicomFrames, dicomLoadError, writeText, mkdir, del, restore, copy, pacs, pacsSend, mimeFor };
 })();

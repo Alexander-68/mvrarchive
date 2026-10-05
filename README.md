@@ -25,3 +25,15 @@ Run regressions with `npm test`, including directory pagination beyond 256
 entries, deleted/legacy listings, overload retries, invalid cursors, and canceled
 scans. Browser header regression: `node test_header.js [path-to-playwright]`.
 Build latest bundle with `npm run build`.
+
+Thumbnail requests retry temporary 429/502/503/504 and network failures while
+needed, including response-body failures. Leaving the viewport or view cancels
+obsolete preview work. Media-grid scrolling updates priorities immediately.
+Only decoded images count as loaded; permanent errors show Retry preview.
+Video capture fallback runs only for unsupported/render-failed posters (415/422),
+so temporary overload never downloads full videos. Card hydration stays bounded
+until card previews finish; returning to interrupted cards resumes their previews.
+
+Browser recovery regression: `node test_preview_recovery.js [path-to-playwright]`.
+Covers a 320-image paginated folder, 429/503 recovery, four-poster video cards,
+visible tiles after scroll jumps, and explicit retry following permanent failure.

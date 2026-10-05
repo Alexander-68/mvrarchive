@@ -11,3 +11,17 @@ Build with `node build.js` or `build.ps1`. Both bundles include root `index.html
 When a DICOM image fails to load and gateway reports inactive DICOM, viewer shows
 `Could not load filename.dcm: DICOM is not activated`. Other load errors keep
 generic message. Admin activates AKDICOM in OmniGate Settings.
+
+Directory reads follow OmniGate's `next_cursor` until every page is collected
+(`limit=256`). Archive studies, study media/metadata, and deleted entries remain
+complete when a directory exceeds one page. Gateways without `next_cursor`
+remain supported. Listing reads retry transient `429`/`503` responses up to five
+times with bounded `Retry-After` delays; mutations are never replayed. Directory
+edits during pagination are not a snapshot; refresh to include new names before
+the current cursor. Existing archive search still retains the complete listing
+in browser memory.
+
+Run regressions with `npm test`, including directory pagination beyond 256
+entries, deleted/legacy listings, overload retries, invalid cursors, and canceled
+scans. Browser header regression: `node test_header.js [path-to-playwright]`.
+Build latest bundle with `npm run build`.

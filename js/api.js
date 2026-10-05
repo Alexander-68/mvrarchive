@@ -6,7 +6,7 @@
 //   GET    /api/platform               -> { platform, product, version, theme, zoom, inactivityMinutes }
 //   GET    /api/me                     -> { username, role }
 //   GET    /api/roots                  -> { roots: [{ name, writable }, ...] }
-//   GET    /api/files?path=            -> { path, entries: [{name,is_dir,size,mod_time}] }
+//   GET    /api/files?path=&limit=&cursor= -> { path, entries: [{name,is_dir,size,mod_time}], next_cursor }
 //   GET    /api/files/read?path=       -> raw bytes (streams, honours Range)
 //   GET    /api/files/thumbnail?path=  -> JPEG thumbnail
 //   GET    /api/files/payload?path=    -> JPEG/MP4/PDF wrapped in a DICOM file, served in place (Range OK)
@@ -124,12 +124,41 @@
       .filter(Boolean);
   }
 
-  // list returns a directory's entries; with deleted=true the directory's
+  // Follow every directory page; archive search and study counts need the full
+  // listing. Legacy gateways without next_cursor still return one complete page.
+  // With deleted=true return the directory's
   // deleted (trashed) entries instead, each carrying original_name/deleted_at
   // while name is the on-disk trash name to use in paths.
-  async function list(path, deleted) {
-    const d = await reqJSON("GET", "api/files" + q(path) + (deleted ? "&deleted=1" : ""));
-    return d.entries || [];
+  async function list(path, deleted, signal) {
+    const entries = [], seen = new Set();
+    let cursor = "";
+    do {
+      const url = "api/files" + q(path) + "&limit=256" + (deleted ? "&deleted=1" : "")
+        + (cursor ? "&cursor=" + encodeURIComponent(cursor) : "");
+      let d;
+      for (let attempt = 0; ; attempt++) {
+        signal?.throwIfAborted();
+        const res = await req("GET", url, undefined, undefined, signal);
+        // Retry safe listing reads only; never replay writes, copy or PACS send.
+        if ((res.status === 429 || res.status === 503) && attempt < 5) {
+          const seconds = Math.min(6, Math.max(1, Number(res.headers.get("Retry-After")) || 1));
+          if (res.body) await res.body.cancel();
+          await new Promise(resolve => setTimeout(resolve, seconds * 1000));
+          continue;
+        }
+        d = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(d.error || `${res.status} ${res.statusText}`);
+        break;
+      }
+      if (!Array.isArray(d.entries || []) || (d.next_cursor != null && typeof d.next_cursor !== "string")) {
+        throw new Error("invalid directory page");
+      }
+      entries.push(...(d.entries || []));
+      cursor = d.next_cursor || "";
+      if (cursor && seen.has(cursor)) throw new Error("directory cursor did not advance");
+      if (cursor) seen.add(cursor);
+    } while (cursor);
+    return entries;
   }
 
   async function readText(path) {

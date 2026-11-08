@@ -26,9 +26,9 @@
     const ext = path.extname(name);
     if (ext === "dcm" || ext === "dicom") {
       // DICOM can wrap any of them; the MVR naming tells: V0001 / W0001 are
-      // video, R0001 a PDF report (also storescp's PDF.<uid>.dcm). Other
-      // names (a PACS-style VLp.X.<uid>.dcm) are stills.
-      if (/^[VW]\d/i.test(name)) return "video";
+      // video (also storescp's VVp/VVe/VVm.<uid>.dcm), R0001 a PDF report
+      // (also storescp's PDF.<uid>.dcm). Other names (VLp.X.<uid>.dcm) are stills.
+      if (/^([VW]\d|VV[pem]\.)/i.test(name)) return "video";
       if (/^(R\d|PDF\.)/i.test(name)) return "pdf";
       return "image";
     }

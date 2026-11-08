@@ -49,6 +49,9 @@ Thumbnail requests retry temporary 429/502/503/504 (each wait 0.1-5 s) at most 5
 needed, including response-body failures. Leaving the viewport or view cancels
 obsolete preview work. Media-grid scrolling updates priorities immediately.
 Only decoded images count as loaded; permanent errors show Retry preview.
+DICOM files play as video when named `V0001`/`W0001` (MVR) or `VVp.`/`VVe.`/`VVm.` (storescp
+Video Photographic/Endoscopic/Microscopic); `PDF.`/`R0001` open as PDF, other `.dcm` as stills.
+
 Video capture fallback runs only for unsupported/render-failed posters (415/422),
 so temporary overload never downloads full videos. Card hydration stays bounded
 until card previews finish; returning to interrupted cards resumes their previews.

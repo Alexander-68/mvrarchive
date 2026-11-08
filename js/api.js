@@ -121,6 +121,21 @@
     } catch (_) { /* retain generic load error for network/other failures */ }
     return "";
   }
+  // dicomPayloadKind reads what a .dcm encapsulates from the payload endpoint's
+  // Content-Type (one byte requested, body cancelled): "video" (MP4), "pdf",
+  // else "image" (JPEG, other pixel data, or any failure).
+  async function dicomPayloadKind(path) {
+    try {
+      const res = await req("GET", payloadURL(path), undefined, { Range: "bytes=0-0" }, AbortSignal.timeout(5000));
+      if (res.body) await res.body.cancel();
+      if (res.ok) {
+        const type = (res.headers.get("Content-Type") || "").toLowerCase();
+        if (type.startsWith("video/")) return "video";
+        if (type.startsWith("application/pdf")) return "pdf";
+      }
+    } catch (_) { /* keep it a still */ }
+    return "image";
+  }
   // The bytes a browser can play: the encapsulated payload for a .dcm, else the file.
   function mediaURL(path) { return /\.(dcm|dicom)$/i.test(path) ? payloadURL(path) : fileURL(path); }
 
@@ -282,5 +297,5 @@
     return d;
   }
 
-  MVR.api = { me, roots, readOnly, list, readText, readBlob, objectURL, fileURL, thumbURL, thumbnail, payloadURL, mediaURL, dicomDump, dicomFrames, dicomLoadError, writeText, mkdir, del, restore, copy, pacs, pacsSend, mimeFor };
+  MVR.api = { me, roots, readOnly, list, readText, readBlob, objectURL, fileURL, thumbURL, thumbnail, payloadURL, mediaURL, dicomDump, dicomFrames, dicomLoadError, dicomPayloadKind, writeText, mkdir, del, restore, copy, pacs, pacsSend, mimeFor };
 })();

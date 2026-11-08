@@ -1454,6 +1454,13 @@
     const ext = MVR.path.extname(m.name);
     const isDicom = ext === "dcm" || ext === "dicom";
     $("#viewer-info").hidden = !isDicom;
+    // A .dcm whose name says nothing (not V0001/VVp./PDF.…) defaults to a
+    // still; ask OmniGate what it really wraps so videos play and PDFs open.
+    if (isDicom && m.kind === "image" && !m.kindProbed) {
+      m.kind = await api.dicomPayloadKind(m.path);
+      m.kindProbed = true;
+      if (state.viewer.media[state.viewer.index] !== m || !state.viewer.open) return;
+    }
     if (isDicom && m.kind === "image") {
       const still = showImage(m, stage, api.payloadURL(m.path), api.thumbURL(m.path));
       const seq = state.viewer.seq;

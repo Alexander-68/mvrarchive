@@ -50,7 +50,9 @@ needed, including response-body failures. Leaving the viewport or view cancels
 obsolete preview work. Media-grid scrolling updates priorities immediately.
 Only decoded images count as loaded; permanent errors show Retry preview.
 DICOM files play as video when named `V0001`/`W0001` (MVR) or `VVp.`/`VVe.`/`VVm.` (storescp
-Video Photographic/Endoscopic/Microscopic); `PDF.`/`R0001` open as PDF, other `.dcm` as stills.
+Video Photographic/Endoscopic/Microscopic); `PDF.`/`R0001` open as PDF. Any other `.dcm`
+is checked when opened: the payload's `Content-Type` (one byte from `api/files/payload`)
+switches it to the video player or PDF viewer; otherwise it opens as a still.
 
 Cards of PDF-only studies, and PDF tiles in the study view (plain and DICOM PDF),
 show page 1 (OmniGate renders it with pdftoppm); without a renderer (415/404/422) the card keeps the study icon, no retry.

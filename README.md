@@ -23,7 +23,9 @@ in browser memory.
 
 The Storage selector never exposes `/priv_data`, the hosted app's private store;
 it is filtered from `/api/roots` before navigation or deep-link resolution.
-Read-only share flags are still applied to the shares that remain.
+Read-only share flags are still applied to the shares that remain. On a
+read-only share (incl. Cloud PACS) the **Show 🗑** toggle is hidden, since it
+can hold no deleted files; switching to one leaves deleted mode.
 
 Cloud PACS: OmniGate lists Google cloud DICOM stores as read-only storage roots,
 each study folder carrying a generated `study_info.yaml`. Cards show

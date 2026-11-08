@@ -465,8 +465,21 @@
   }
 
   // ---- archive grid ---------------------------------------------------------
+  // Read-only storage (incl. Cloud PACS) can hold no deleted files: hide the
+  // toggle and leave deleted mode so the grid shows live studies.
+  function syncDeletedToggle(root) {
+    const btn = $("#btn-deleted"), ro = api.readOnly.has(root);
+    btn.hidden = ro;
+    if (ro && state.deleted) {
+      state.deleted = S.showDeleted = false;
+      btn.setAttribute("aria-pressed", "false");
+      btn.dataset.tip = "Show deleted files";
+    }
+  }
+
   async function loadArchive(root) {
     state.root = root;
+    syncDeletedToggle(root);
     showArchive();
     const grid = $("#grid");
     grid.innerHTML = "";

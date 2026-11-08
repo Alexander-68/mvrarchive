@@ -336,6 +336,11 @@
     return study.thumbFile || m.find(f => f.kind === "image" || f.kind === "video") || m.find(f => f.kind === "pdf") || null;
   }
 
+  // hasPreview: media tiles ask OmniGate for a thumbnail (PDFs: page 1).
+  function hasPreview(file) {
+    return file.kind === "image" || file.kind === "video" || file.kind === "pdf";
+  }
+
   // pdfPreviewGone: a PDF preview refusal that is final (no renderer: 415,
   // none for this share: 404 on Cloud PACS, unreadable: 422) shows the study
   // icon rather than a retry button.
@@ -364,6 +369,6 @@
     showDeleted: false,
     isStudyFolder, mediaKind, parseStampName, newStudy, trashedStudy, hydrate,
     displayName, studyDate, fullName, formatDOB, formatDate, fmtSize,
-    matches, FIELD_GROUPS, KNOWN_KEYS, fieldValue, pacsSendable, cardPreview, pdfPreviewGone, dicomTags, seriesNumber, browserPoster,
+    matches, FIELD_GROUPS, KNOWN_KEYS, fieldValue, pacsSendable, cardPreview, hasPreview, pdfPreviewGone, dicomTags, seriesNumber, browserPoster,
   };
 })();

@@ -50,3 +50,5 @@ assert.strictEqual(S.cardPreview({ media: [pdf, img] }), img, "image wins over P
 assert.strictEqual(S.cardPreview({ media: [] }), null);
 assert.ok(S.pdfPreviewGone(pdf, 415) && S.pdfPreviewGone(pdf, 404), "no renderer is final");
 assert.ok(!S.pdfPreviewGone(pdf, 503) && !S.pdfPreviewGone(img, 415), "busy or non-PDF keeps retry");
+assert.ok(S.hasPreview(pdf) && S.hasPreview(img), "media tiles preview PDFs and images");
+assert.ok(!S.hasPreview({ kind: "other" }));

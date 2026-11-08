@@ -52,8 +52,8 @@ Only decoded images count as loaded; permanent errors show Retry preview.
 DICOM files play as video when named `V0001`/`W0001` (MVR) or `VVp.`/`VVe.`/`VVm.` (storescp
 Video Photographic/Endoscopic/Microscopic); `PDF.`/`R0001` open as PDF, other `.dcm` as stills.
 
-Cards of PDF-only studies show page 1 of the first PDF (OmniGate renders it with
-pdftoppm); without a renderer (415/404/422) the card keeps the study icon, no retry.
+Cards of PDF-only studies, and PDF tiles in the study view (plain and DICOM PDF),
+show page 1 (OmniGate renders it with pdftoppm); without a renderer (415/404/422) the card keeps the study icon, no retry.
 
 Video capture fallback runs only for unsupported/render-failed posters (415/422),
 so temporary overload never downloads full videos. Card hydration stays bounded

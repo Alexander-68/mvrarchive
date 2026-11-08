@@ -1123,7 +1123,7 @@
       tile.appendChild(ic);
 
       const loadPreview = async () => {
-        if (m.kind !== "image" && m.kind !== "video") return;
+        if (!S.hasPreview(m)) return;
         const controller = new AbortController();
         m._previewController = controller;
         previewControllers.set(controller, tile);
@@ -1134,6 +1134,8 @@
           tile.insertBefore(img, tile.firstChild);
           ic.remove();
         } catch (err) {
+          // No PDF renderer (415) or none on this share: the PDF icon stays.
+          if (S.pdfPreviewGone(m, err.status)) return;
           if (!controller.signal.aborted) {
             m._previewError = true;
             previewRetry(tile, err, () => { m._previewError = false; enqueueMedia(tile._queueItem, 1); });

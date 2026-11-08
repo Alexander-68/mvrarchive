@@ -21,10 +21,14 @@ edits during pagination are not a snapshot; refresh to include new names before
 the current cursor. Existing archive search still retains the complete listing
 in browser memory.
 
+The Storage selector never exposes `/priv_data`, the hosted app's private store;
+it is filtered from `/api/roots` before navigation or deep-link resolution.
+Read-only share flags are still applied to the shares that remain.
+
 Run regressions with `npm test`, including directory pagination beyond 256
-entries, deleted/legacy listings, overload retries, invalid cursors, and canceled
-scans. Browser header regression: `node test_header.js [path-to-playwright]`.
-Build latest bundle with `npm run build`.
+entries, deleted/legacy listings, overload retries, invalid cursors, canceled
+scans, and hidden private storage. Browser header regression:
+`node test_header.js [path-to-playwright]`. Build latest bundle with `npm run build`.
 
 Thumbnail requests retry temporary 429/502/503/504 and network failures while
 needed, including response-body failures. Leaving the viewport or view cancels

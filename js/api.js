@@ -143,6 +143,13 @@
     return normalizeRoot(root.path);
   }
 
+  // /priv_data is the hosted app's private store (data/apps_data/<id>), not a
+  // share users browse. Keep it out of the storage selector and deep links.
+  function isPrivateRoot(root) {
+    const s = String(root || "").replace(/\\/g, "/").replace(/\/+$/, "");
+    return s.slice(s.lastIndexOf("/") + 1).toLowerCase() === "priv_data";
+  }
+
   // /api/me reports current authenticated user info
   async function me() {
     return reqJSON("GET", "api/me").catch(() => ({}));
@@ -153,14 +160,19 @@
   // so local deployments are not forced to upgrade in lockstep.
   // readOnly collects the shares whose writable flag is false, so the UI can
   // hide Delete/Paste/Restore there (the server enforces 403 regardless).
+  // /priv_data is the app's own store and is never surfaced to users.
   const readOnly = new Set();
   async function roots() {
     const d = await reqJSON("GET", "api/roots");
     readOnly.clear();
-    for (const r of d.roots || []) if (r && r.writable === false) readOnly.add(normalizeRoot(r));
-    return (d.roots || [])
-      .map(normalizeRoot)
-      .filter(Boolean);
+    const visible = [];
+    for (const r of d.roots || []) {
+      const root = normalizeRoot(r);
+      if (!root || isPrivateRoot(root)) continue;
+      if (r && r.writable === false) readOnly.add(root);
+      visible.push(root);
+    }
+    return visible;
   }
 
   // Follow every directory page; archive search and study counts need the full

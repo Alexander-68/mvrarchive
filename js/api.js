@@ -74,8 +74,9 @@
   }
   // A busy renderer is temporary, never a missing preview. Callers cancel
   // when their view goes away; only permanent failures reach the Retry UI.
+  // Overload/gateway statuses retry 5 times, then reject so the tile shows Retry.
   async function thumbnail(path, width, signal) {
-    for (;;) {
+    for (let busy = 0; ;) {
       signal?.throwIfAborted();
       let res;
       const attemptSignal = signal ? AbortSignal.any([signal, AbortSignal.timeout(45000)]) : AbortSignal.timeout(45000);
@@ -85,7 +86,7 @@
         await retryWait(1000, signal);
         continue;
       }
-      if ([429, 502, 503, 504].includes(res.status)) {
+      if ([429, 502, 503, 504].includes(res.status) && busy++ < 5) {
         const seconds = Math.min(5, Math.max(0.1, Number(res.headers.get("Retry-After")) || 1));
         await res.body?.cancel();
         await retryWait(seconds * 1000, signal);

@@ -42,3 +42,11 @@ assert.strictEqual(S.mediaKind("VVm.2.25.1.dcm"), "video", "storescp Video Micro
 assert.strictEqual(S.mediaKind("MRBRAIN.DCM"), "image");
 assert.ok(S.pacsSendable("I0001.jpg") && S.pacsSendable("I0002.dcm") && S.pacsSendable("V0001.mp4") && S.pacsSendable("R0001.pdf") && !S.pacsSendable("V0001.mov"));
 console.log("ok");
+
+// Card preview: thumbnail, else first image/video, else page 1 of a PDF.
+const pdf = { kind: "pdf", name: "R0001.pdf" }, img = { kind: "image", name: "I0001.jpg" };
+assert.strictEqual(S.cardPreview({ media: [pdf] }), pdf, "PDF-only study previews its report");
+assert.strictEqual(S.cardPreview({ media: [pdf, img] }), img, "image wins over PDF");
+assert.strictEqual(S.cardPreview({ media: [] }), null);
+assert.ok(S.pdfPreviewGone(pdf, 415) && S.pdfPreviewGone(pdf, 404), "no renderer is final");
+assert.ok(!S.pdfPreviewGone(pdf, 503) && !S.pdfPreviewGone(img, 415), "busy or non-PDF keeps retry");

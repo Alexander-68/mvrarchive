@@ -671,7 +671,7 @@
     thumb.classList.add("loading");
     thumb.classList.remove("quad");
     const visual = study.media.filter(m => m.kind === "image" || m.kind === "video");
-    let selected = [study.thumbFile || visual[0]].filter(Boolean);
+    let selected = [S.cardPreview(study)].filter(Boolean);
     if (state.cardSize >= QUAD_CARD_SIZE && visual.length >= 4) {
       thumb.classList.add("quad");
       selected = Array.from({ length: 4 }, (_, i) => visual[Math.round(i * (visual.length - 1) / 3)]);
@@ -683,6 +683,7 @@
       try { await loadThumbImg(img, file, controller.signal, study); return true; }
       catch (err) {
         img.remove();
+        if (S.pdfPreviewGone(file, err.status)) { addPlaceholder(thumb); return true; }
         if (!controller.signal.aborted) {
           study._thumbError = true;
           previewRetry(thumb, err, () => { study._thumbError = false; enqueueCard(study, 1); });

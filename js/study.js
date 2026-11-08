@@ -328,6 +328,21 @@
     return t;
   }
 
+  // cardPreview picks the card's single preview: the study thumbnail, else the
+  // first image/video, else page 1 of the first PDF (OmniGate renders it with
+  // pdftoppm when installed).
+  function cardPreview(study) {
+    const m = study.media || [];
+    return study.thumbFile || m.find(f => f.kind === "image" || f.kind === "video") || m.find(f => f.kind === "pdf") || null;
+  }
+
+  // pdfPreviewGone: a PDF preview refusal that is final (no renderer: 415,
+  // none for this share: 404 on Cloud PACS, unreadable: 422) shows the study
+  // icon rather than a retry button.
+  function pdfPreviewGone(file, status) {
+    return file.kind === "pdf" && [404, 415, 422].includes(status);
+  }
+
   // browserPoster: may the browser read a video to grab a poster frame after
   // the thumbnail endpoint refused it (415/422)? Never on a Cloud PACS study:
   // reading the video there downloads all of it from Google.
@@ -349,6 +364,6 @@
     showDeleted: false,
     isStudyFolder, mediaKind, parseStampName, newStudy, trashedStudy, hydrate,
     displayName, studyDate, fullName, formatDOB, formatDate, fmtSize,
-    matches, FIELD_GROUPS, KNOWN_KEYS, fieldValue, pacsSendable, dicomTags, seriesNumber, browserPoster,
+    matches, FIELD_GROUPS, KNOWN_KEYS, fieldValue, pacsSendable, cardPreview, pdfPreviewGone, dicomTags, seriesNumber, browserPoster,
   };
 })();

@@ -326,10 +326,20 @@
     return t;
   }
 
+  // seriesNumber puts each media kind in its own series above the originals:
+  // SeriesNumberBase + {image:1, video:2, pdf:3}. Null when the study has no
+  // base (not a cloud study) or the file is DICOM (keeps its own series).
+  const SERIES_OFFSET = { jpg: 1, jpeg: 1, bmp: 1, mp4: 2, pdf: 3 };
+  function seriesNumber(study, fileName) {
+    const base = study && study.info && study.info.SeriesNumberBase;
+    const off = SERIES_OFFSET[String(fileName).split(".").pop().toLowerCase()];
+    return Number.isInteger(base) && off ? String(base + off) : null;
+  }
+
   MVR.study = {
     showDeleted: false,
     isStudyFolder, mediaKind, parseStampName, newStudy, trashedStudy, hydrate,
     displayName, studyDate, fullName, formatDOB, formatDate, fmtSize,
-    matches, FIELD_GROUPS, KNOWN_KEYS, fieldValue, pacsSendable, dicomTags,
+    matches, FIELD_GROUPS, KNOWN_KEYS, fieldValue, pacsSendable, dicomTags, seriesNumber,
   };
 })();

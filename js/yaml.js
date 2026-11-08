@@ -17,7 +17,7 @@
     if ((s.startsWith('"') && s.endsWith('"')) || (s.startsWith("'") && s.endsWith("'"))) {
       const q = s[0];
       s = s.slice(1, -1);
-      if (q === '"') s = s.replace(/\\"/g, '"').replace(/\\\\/g, "\\").replace(/\\n/g, "\n");
+      if (q === '"') s = s.replace(/\\(["\\n])/g, (_, c) => (c === "n" ? "\n" : c));
       else s = s.replace(/''/g, "'");
       return s;
     }

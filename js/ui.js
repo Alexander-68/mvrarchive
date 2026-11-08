@@ -622,7 +622,7 @@
     const card = study.cardEl;
     if (!card) return;
     card.querySelector(".card-title").textContent = S.displayName(study);
-    card.querySelector(".card-date").textContent = S.formatDate(S.studyDate(study)) || "";
+    card.querySelector(".card-date").textContent = [S.formatDate(S.studyDate(study)), study.info && study.info.Modality].filter(Boolean).join(" · ");
 
     const c = study.counters;
     const meta = card.querySelector(".card-meta");
@@ -933,7 +933,7 @@
     const skipped = all.length - files.length;
     const body = el("div");
     const sel = el("select");
-    for (const p of state.pacs) { const o = el("option", null, `${p.name} (${p.aet}@${p.host}:${p.port})`); o.value = p.name; sel.appendChild(o); }
+    for (const p of state.pacs) { const o = el("option", null, p.kind === "cloud" ? `${p.name} (Cloud PACS)` : `${p.name} (${p.aet}@${p.host}:${p.port})`); o.value = p.name; sel.appendChild(o); }
     body.appendChild(el("div", null, "PACS server"));
     body.appendChild(sel);
     body.appendChild(el("div", null, `${plural(files.length, "file")} to send` + (skipped ? ` (${skipped} skipped: only JPEG, BMP, MP4, PDF and DICOM can be sent)` : "")));
@@ -946,7 +946,12 @@
       for (const f of files) {
         if (run.cancel) break;
         prog.textContent = `Sending ${f.name}... (${ok + errors.length + 1}/${files.length})`;
-        try { await api.pacsSend(sel.value, f.path, S.dicomTags(f.study)); ok++; }
+        try {
+          const tags = S.dicomTags(f.study);
+          const sn = S.seriesNumber(f.study, f.name);
+          if (sn) tags.SeriesNumber = sn;
+          await api.pacsSend(sel.value, f.path, tags); ok++;
+        }
         catch (e) { errors.push(`${f.name}: ${e.message}`); errBox.textContent = errors.join("\n"); }
       }
       prog.textContent = run.cancel ? `Cancelled after ${ok} sent` : `Sent ${ok} of ${files.length}` + (errors.length ? `, ${errors.length} failed` : "");

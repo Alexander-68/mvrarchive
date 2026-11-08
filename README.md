@@ -25,6 +25,13 @@ The Storage selector never exposes `/priv_data`, the hosted app's private store;
 it is filtered from `/api/roots` before navigation or deep-link resolution.
 Read-only share flags are still applied to the shares that remain.
 
+Cloud PACS: OmniGate lists Google cloud DICOM stores as read-only storage roots,
+each study folder carrying a generated `study_info.yaml`. Cards show
+`Modality` beside the study date. `GET api/pacs` entries with `kind: "cloud"`
+appear in the send dialog as `Name (Cloud PACS)`. When `SeriesNumberBase` is
+set, Send to PACS adds `SeriesNumber` per file: base + 1 (JPEG/BMP), + 2 (MP4),
++ 3 (PDF); DICOM files get none. YAML quoted strings unescape backslash, quote and newline escapes in one pass.
+
 Run regressions with `npm test`, including directory pagination beyond 256
 entries, deleted/legacy listings, overload retries, invalid cursors, canceled
 scans, and hidden private storage. Browser header regression:

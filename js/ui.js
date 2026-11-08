@@ -667,7 +667,7 @@
     const results = await Promise.all(selected.map(async file => {
       const img = el("img", "thumb-img");
       thumb.appendChild(img);
-      try { await loadThumbImg(img, file, controller.signal); return true; }
+      try { await loadThumbImg(img, file, controller.signal, study); return true; }
       catch (err) {
         img.remove();
         if (!controller.signal.aborted) {
@@ -683,13 +683,13 @@
     thumb.classList.remove("loading");
   }
 
-  async function loadThumbImg(img, file, signal) {
+  async function loadThumbImg(img, file, signal, study) {
     let url;
     try {
       try { url = URL.createObjectURL(await api.thumbnail(file.path, 400, signal)); }
       catch (err) {
         // Busy/denied requests never trigger a full video download.
-        if (signal.aborted || file.kind !== "video" || ![415, 422].includes(err.status)) throw err;
+        if (signal.aborted || !S.browserPoster(study, file, err.status)) throw err;
         url = await captureVideoFrame(api.mediaURL(file.path), 400);
         if (!url) throw Error("Video preview unavailable");
       }
@@ -1115,7 +1115,7 @@
         previewControllers.set(controller, tile);
         const img = el("img");
         try {
-          await loadThumbImg(img, m, controller.signal);
+          await loadThumbImg(img, m, controller.signal, study);
           if (!tile.isConnected) throw new DOMException("View changed", "AbortError");
           tile.insertBefore(img, tile.firstChild);
           ic.remove();

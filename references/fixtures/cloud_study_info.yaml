@@ -10,7 +10,7 @@ StudyID: "ENDO-2024-0315"
 StudyInstanceUID: "1.2.826.0.1.3680043.8.498.10293847561234"
 AccessionNumber: "ACC778812"
 WlStudyDate: "20240315"
-WlStudyTime: "143052"
+WlStudyTime: "143052.123"
 Modality: "ES/XC"
 PatientNotes: "Gastroscopy, biopsy \"antrum\""
 SeriesNumberBase: 100

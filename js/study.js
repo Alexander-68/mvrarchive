@@ -278,9 +278,11 @@
   function dicomTags(study) {
     const i = study.info || {};
     const t = {};
-    const human = [i.PatientLastName, i.PatientFirstName, i.PatientMiddleName].map((v) => v || "").join("^").replace(/\^+$/, "");
+    const human = [i.PatientLastName, i.PatientFirstName, i.PatientMiddleName, i.PatientNamePrefix, i.PatientNameSuffix].map((v) => v || "").join("^").replace(/\^+$/, "");
     if (i.AnimalName || human) t.PatientName = String(i.AnimalName || human);
-    if (i.PatientID || i.StudyID) t.PatientID = String(i.PatientID || i.StudyID);
+    // A cloud study's StudyID is the store's, never a patient identifier.
+    const pid = i.CloudPACS ? i.PatientID : i.PatientID || i.StudyID;
+    if (pid) t.PatientID = String(pid);
     const dob = formatDOB(i);
     if (dob.length === 10) t.PatientBirthDate = dob.replace(/-/g, "");
     const sex = String(i.PatientGender || "").toUpperCase()[0];
@@ -326,6 +328,13 @@
     return t;
   }
 
+  // browserPoster: may the browser read a video to grab a poster frame after
+  // the thumbnail endpoint refused it (415/422)? Never on a Cloud PACS study:
+  // reading the video there downloads all of it from Google.
+  function browserPoster(study, file, status) {
+    return file.kind === "video" && [415, 422].includes(status) && !(study && study.info && study.info.CloudPACS);
+  }
+
   // seriesNumber puts each media kind in its own series above the originals:
   // SeriesNumberBase + {image:1, video:2, pdf:3}. Null when the study has no
   // base (not a cloud study) or the file is DICOM (keeps its own series).
@@ -340,6 +349,6 @@
     showDeleted: false,
     isStudyFolder, mediaKind, parseStampName, newStudy, trashedStudy, hydrate,
     displayName, studyDate, fullName, formatDOB, formatDate, fmtSize,
-    matches, FIELD_GROUPS, KNOWN_KEYS, fieldValue, pacsSendable, dicomTags, seriesNumber,
+    matches, FIELD_GROUPS, KNOWN_KEYS, fieldValue, pacsSendable, dicomTags, seriesNumber, browserPoster,
   };
 })();

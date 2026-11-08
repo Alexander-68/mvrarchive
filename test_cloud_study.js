@@ -13,7 +13,7 @@ const study = { folderName: "20240315_143052_PID-20417_MUSTERMANN-ERIKA_01234567
 const t = S.dicomTags(study);
 assert.strictEqual(t.PatientID, "PID-20417");
 assert.strictEqual(t.StudyDate, "20240315");
-assert.strictEqual(t.StudyTime, "143052");
+assert.strictEqual(t.StudyTime, "143052.123"); // full DICOM TM from WlStudyTime
 assert.strictEqual(t.StudyInstanceUID, "1.2.826.0.1.3680043.8.498.10293847561234");
 assert.strictEqual(t.PatientBirthDate, "19760412");
 assert.strictEqual(t.PatientSex, "F");
@@ -35,4 +35,23 @@ const yq = (body) => MVR.yaml.parse('k: "' + body + '"').k;
 assert.strictEqual(yq("C:" + B + B + "notes"), "C:" + B + "notes");
 assert.strictEqual(yq("a" + B + "nb"), "a\nb");
 assert.strictEqual(yq("say " + B + '"hi' + B + '"'), 'say "hi"');
+// Cloud PatientID only from PatientID, never the StudyID fallback.
+assert.strictEqual(S.dicomTags({ folderName: "x", info: { CloudPACS: "C", StudyID: "S1" } }).PatientID, undefined);
+assert.strictEqual(S.dicomTags({ folderName: "x", info: { CloudPACS: "C", PatientID: "P9", StudyID: "S1" } }).PatientID, "P9");
+assert.strictEqual(S.dicomTags({ folderName: "x", info: { StudyID: "S1" } }).PatientID, "S1");
+
+// PN prefix/suffix: Last^First^Middle^Prefix^Suffix, trailing empties trimmed.
+const pn = (i) => S.dicomTags({ folderName: "x", info: i }).PatientName;
+assert.strictEqual(pn({ PatientLastName: "DOE", PatientFirstName: "JOHN", PatientNamePrefix: "DR", PatientNameSuffix: "JR" }), "DOE^JOHN^^DR^JR");
+assert.strictEqual(pn({ PatientLastName: "DOE", PatientNamePrefix: "DR" }), "DOE^^^DR");
+assert.strictEqual(pn({ PatientLastName: "DOE", PatientFirstName: "JOHN" }), "DOE^JOHN");
+
+// Never read a cloud video to make a poster (whole-video WADO download).
+const vid = { kind: "video" };
+assert.strictEqual(S.browserPoster(study, vid, 415), false);
+assert.strictEqual(S.browserPoster(study, vid, 422), false);
+assert.strictEqual(S.browserPoster({ info: {} }, vid, 415), true);
+assert.strictEqual(S.browserPoster({ info: null }, vid, 422), true);
+assert.strictEqual(S.browserPoster({ info: {} }, vid, 404), false);
+assert.strictEqual(S.browserPoster({ info: {} }, { kind: "image" }, 415), false);
 console.log("ok");

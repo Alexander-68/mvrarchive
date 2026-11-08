@@ -31,6 +31,12 @@ each study folder carrying a generated `study_info.yaml`. Cards show
 appear in the send dialog as `Name (Cloud PACS)`. When `SeriesNumberBase` is
 set, Send to PACS adds `SeriesNumber` per file: base + 1 (JPEG/BMP), + 2 (MP4),
 + 3 (PDF); DICOM files get none. YAML quoted strings unescape backslash, quote and newline escapes in one pass.
+Cloud videos never get a browser-made poster (that would download the whole
+video from Google): OmniGate answers their thumbnails `404`, and the 415/422
+frame-capture fallback is skipped for any study with `CloudPACS` set. A cloud
+study sends `PatientID` only from its own `PatientID` (no `StudyID` fallback),
+`PatientName` as Last^First^Middle^Prefix^Suffix, and `WlStudyTime` as stored
+(fraction kept).
 
 Run regressions with `npm test`, including directory pagination beyond 256
 entries, deleted/legacy listings, overload retries, invalid cursors, canceled

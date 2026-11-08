@@ -72,9 +72,9 @@
       signal?.addEventListener("abort", abort, { once: true });
     });
   }
-  // A busy renderer is temporary, never a missing preview. Callers cancel
-  // when their view goes away; only permanent failures reach the Retry UI.
-  // Overload/gateway statuses retry 5 times, then reject so the tile shows Retry.
+  // Callers cancel when their view goes away. Sustained 429/502/503/504
+  // (cloud or a local busy renderer) gives up after 5 retries and rejects, so
+  // the tile shows Retry; network errors keep retrying.
   async function thumbnail(path, width, signal) {
     for (let busy = 0; ;) {
       signal?.throwIfAborted();

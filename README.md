@@ -43,7 +43,7 @@ entries, deleted/legacy listings, overload retries, invalid cursors, canceled
 scans, and hidden private storage. Browser header regression:
 `node test_header.js [path-to-playwright]`. Build latest bundle with `npm run build`.
 
-Thumbnail requests retry temporary 429/502/503/504 (each wait 0.1-5 s, at most 5 retries, then Retry preview) and network failures while
+Thumbnail requests retry temporary 429/502/503/504 (each wait 0.1-5 s) at most 5 times, then show Retry preview (cloud or local busy renderer alike); network failures retry while
 needed, including response-body failures. Leaving the viewport or view cancels
 obsolete preview work. Media-grid scrolling updates priorities immediately.
 Only decoded images count as loaded; permanent errors show Retry preview.

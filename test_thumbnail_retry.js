@@ -13,6 +13,7 @@ vm.runInNewContext(fs.readFileSync(__dirname + "/js/api.js", "utf8"), {
 });
 
 (async () => {
+  setTimeout(() => { console.error("timeout"); process.exit(1); }, 15000).unref();
   for (const s of [502, 504, 429, 503]) {
     calls = 0; status = s;
     await assert.rejects(MVR.api.thumbnail("/a.jpg", 64), (e) => e.status === s);

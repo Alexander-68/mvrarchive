@@ -365,7 +365,44 @@
     return Number.isInteger(base) && off ? String(base + off) : null;
   }
 
+  // ---- Cloud PACS search ---------------------------------------------------
+  // A Cloud PACS root is never listed whole: it opens on recent studies,
+  // widening 3 -> 7 -> 30 -> 365 days while nothing is found, or on the
+  // user's search (OmniGate turns these keys into a QIDO query).
+  const RECENT_DAYS = [3, 7, 30, 365];
+  const ymd = (d) => `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}${String(d.getDate()).padStart(2, "0")}`;
+
+  // recentRange(3) is today and the 2 days before, as a DICOM date range.
+  function recentRange(days, now = new Date()) {
+    const from = new Date(now.getFullYear(), now.getMonth(), now.getDate() - (days - 1));
+    return `${ymd(from)}-${ymd(now)}`;
+  }
+
+  // cloudFilter maps the Search form ({PatientName, PatientID, AccessionNumber,
+  // ModalitiesInStudy, StudyDescription, from, to}; dates as YYYY-MM-DD) to
+  // query keys. All empty -> { filter: null } (recent mode). Without a date,
+  // patient name, MRN or accession is required so no search pulls the whole store.
+  function cloudFilter(form, now = new Date()) {
+    const f = {};
+    for (const k of ["PatientName", "PatientID", "AccessionNumber", "ModalitiesInStudy", "StudyDescription"]) {
+      const v = String(form[k] || "").trim();
+      if (v) f[k] = v;
+    }
+    const from = String(form.from || "").replaceAll("-", ""), to = String(form.to || "").replaceAll("-", "");
+    if (from || to) {
+      const lo = from || "19000101", hi = to || ymd(now);
+      if (lo > hi) return { error: "The start date is after the end date." };
+      f.StudyDate = `${lo}-${hi}`;
+    }
+    if (!Object.keys(f).length) return { filter: null };
+    if (!f.StudyDate && !f.PatientName && !f.PatientID && !f.AccessionNumber) {
+      return { error: "Add a study date range, patient name, MRN or accession number." };
+    }
+    return { filter: f };
+  }
+
   MVR.study = {
+    RECENT_DAYS, recentRange, cloudFilter,
     showDeleted: false,
     isStudyFolder, mediaKind, parseStampName, newStudy, trashedStudy, hydrate,
     displayName, studyDate, fullName, formatDOB, formatDate, fmtSize,

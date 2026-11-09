@@ -177,15 +177,18 @@
   // readOnly collects the shares whose writable flag is false, so the UI can
   // hide Delete/Paste/Restore there (the server enforces 403 regardless).
   // /priv_data is the app's own store and is never surfaced to users.
-  const readOnly = new Set();
+  // searchable collects shares listed by search (Cloud PACS; roots[].search).
+  const readOnly = new Set(), searchable = new Set();
   async function roots() {
     const d = await reqJSON("GET", "api/roots");
     readOnly.clear();
+    searchable.clear();
     const visible = [];
     for (const r of d.roots || []) {
       const root = normalizeRoot(r);
       if (!root || isPrivateRoot(root)) continue;
       if (r && r.writable === false) readOnly.add(root);
+      if (r && r.search) searchable.add(root);
       visible.push(root);
     }
     return visible;
@@ -196,11 +199,14 @@
   // With deleted=true return the directory's
   // deleted (trashed) entries instead, each carrying original_name/deleted_at
   // while name is the on-disk trash name to use in paths.
-  async function list(path, deleted, signal) {
+  // filter ({StudyDate, PatientName, ...}) searches a Cloud PACS root; the
+  // result carries .truncated when OmniGate capped it.
+  async function list(path, deleted, signal, filter) {
     const entries = [], seen = new Set();
+    const search = Object.entries(filter || {}).map(([k, v]) => `&${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join("");
     let cursor = "";
     do {
-      const url = "api/files" + q(path) + "&limit=256" + (deleted ? "&deleted=1" : "")
+      const url = "api/files" + q(path) + "&limit=256" + (deleted ? "&deleted=1" : "") + search
         + (cursor ? "&cursor=" + encodeURIComponent(cursor) : "");
       let d;
       for (let attempt = 0; ; attempt++) {
@@ -221,6 +227,7 @@
         throw new Error("invalid directory page");
       }
       entries.push(...(d.entries || []));
+      if (d.truncated) entries.truncated = true;
       cursor = d.next_cursor || "";
       if (cursor && seen.has(cursor)) throw new Error("directory cursor did not advance");
       if (cursor) seen.add(cursor);
@@ -297,5 +304,5 @@
     return d;
   }
 
-  MVR.api = { me, roots, readOnly, list, readText, readBlob, objectURL, fileURL, thumbURL, thumbnail, payloadURL, mediaURL, dicomDump, dicomFrames, dicomLoadError, dicomPayloadKind, writeText, mkdir, del, restore, copy, pacs, pacsSend, mimeFor };
+  MVR.api = { me, roots, readOnly, searchable, list, readText, readBlob, objectURL, fileURL, thumbURL, thumbnail, payloadURL, mediaURL, dicomDump, dicomFrames, dicomLoadError, dicomPayloadKind, writeText, mkdir, del, restore, copy, pacs, pacsSend, mimeFor };
 })();

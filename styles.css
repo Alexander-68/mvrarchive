@@ -149,6 +149,7 @@ button:disabled { opacity: .45; cursor: default; }
 button.primary { background: var(--accent); color: #06283d; border-color: transparent; font-weight: 600; }
 button.ghost { background: transparent; }
 button.toggle[aria-pressed="true"] { border-color: var(--error); color: var(--error); font-weight: 600; }
+#btn-cloud-search[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); font-weight: 600; }
 .iconbtn {
   background: transparent; border-color: transparent; padding: .4rem .55rem;
   font-size: 1.05rem; line-height: 1;
@@ -348,6 +349,9 @@ button.toggle[aria-pressed="true"] { border-color: var(--error); color: var(--er
 .modal-body { padding: .8rem 1rem; overflow: auto; flex: 1; min-height: 0; line-height: 1.5; }
 .modal-body ul { margin: .4rem 0 0; padding-left: 1.2rem; }
 .modal-body select { width: 100%; margin-top: .4rem; }
+.cloud-search label { display: grid; grid-template-columns: 11rem 1fr; align-items: center; gap: .6rem; margin-bottom: .4rem; }
+.cloud-search input { min-width: 0; }
+@media (max-width: 480px) { .cloud-search label { grid-template-columns: 1fr; gap: .2rem; } }
 .modal-body .progress { margin-top: .6rem; font-weight: 600; }
 .modal-body progress { width: 100%; margin-top: .3rem; accent-color: var(--accent); }
 .modal-body .errors { margin-top: .4rem; color: var(--error); white-space: pre-wrap; }

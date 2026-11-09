@@ -239,7 +239,7 @@ relative to app prefix (use `api/...` in browser URLs). `path` values are
 |--------|------|---------|-------|
 | `GET` | `/api/platform` | Identify the gateway and read its display/session settings | **No session needed.** Returns `{"platform":"omnigate","product","version","theme","zoom","inactivityMinutes"}` |
 | `GET` | `/api/me` | Current authenticated user identity | Returns `{"username","role"}` |
-| `GET` | `/api/roots` | List available shares | Returns `{"roots":[{"name","writable","remote"?}]}` (`remote` only when true); Cloud PACS roots are `writable:false`, `remote:true` (see *Cloud PACS roots*) |
+| `GET` | `/api/roots` | List available shares | Returns `{"roots":[{"name","writable","remote"?,"search"?}]}` (`remote`, `search` only when true); Cloud PACS roots are `writable:false`, `remote:true`, `search:true` (see *Cloud PACS roots*) |
 | `GET` | `/api/files?path=` | List a directory | Returns `{"path","entries":[{name,is_dir,size,mod_time}],"next_cursor"}`. Default 256 rows; `limit=1..1000`, repeat with `cursor=next_cursor` until empty. Add `&deleted=1` to list that directory's **deleted** entries instead: each also carries `original_name` and `deleted_at`; `name` is the on-disk trash name to use in paths |
 | `GET` | `/api/files/statfs?path=` | Capacity of the volume behind a path | Returns `{"total","free"}` in bytes; `free` is what the server may still write. Works on local and network shares. |
 | `GET` | `/api/files/size?path=&refresh=1` | Recursive visible folder size | Returns `{bytes,files,folders,calculated_at,cached}`. Omit refresh to use 30-second host cache; abort fetch to cancel your request. Last waiter cancellation stops shared scan. Hidden entries, trash and symlinks excluded; errors never return partial totals. |
@@ -334,6 +334,27 @@ implemented). Layout:
 
 - Study folders `yyyyMMdd_HHmmss_<PatientID>_<PatientName>_<12hex>`. Sort
   newest-first yourself.
+- **Search, don't list.** A plain `GET /api/files?path=/<name>` pulls every
+  study from Google (up to 50 000, about one request per 1 000). Roots with
+  `search:true` take study filters on that same call instead; any of them
+  turns the listing into a QIDO search (paging and `cursor` unchanged):
+
+  | Param | Matching |
+  |-------|----------|
+  | `StudyDate` | `YYYYMMDD` or range `YYYYMMDD-YYYYMMDD` (else `400`) |
+  | `PatientName` | Google fuzzy: any word prefixes any name part (`jo` finds `DOE^JOHN`) |
+  | `PatientID`, `AccessionNumber` | exact |
+  | `ModalitiesInStudy` | any of a comma list, e.g. `ES,XC` (matched by OmniGate) |
+  | `StudyDescription` | case-insensitive substring (matched by OmniGate) |
+
+  Values are at most 64 characters; filters work only on the root (`400`
+  below it or on a share without `search`). A search returns at most 5 000
+  studies; beyond that the response carries `"truncated":true`. Results are
+  cached about 60 s per filter. Modality or description alone still scans the
+  whole store; pair them with a date range. Study folders from a search (or a
+  deep link) open without listing the whole store: OmniGate resolves them by
+  the folder's date. MVRarchive opens on the last 3 days and widens to 7, 30,
+  365 while empty.
 - Files `I####_<12hex>.dcm` (images), `V...` (video), `R...` (PDF report).
 - Virtual `study_info.yaml` per study (WlStudyDate, WlStudyTime,
   SeriesNumberBase, CloudPACS, ...).

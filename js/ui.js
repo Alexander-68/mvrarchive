@@ -29,6 +29,9 @@
     focus: 0,            // index into visible studies
     clip: null,          // { kind: "study" | "file", items: [{ path, name, from }] } after Copy
     pacs: [],            // PACS servers from /api/pacs; Send to PACS shows when non-empty
+    cloudForm: {},       // Cloud PACS Search form values; cloudFilter null = recent studies
+    cloudFilter: null,
+    cloudScope: "",      // what the Cloud PACS grid shows, e.g. "last 3 days"
     deleted: false,      // Deleted toggle: browse trashed content, Restore instead of Copy/Delete/PACS
     current: null,       // study open in detail view
     mediaFocus: 0,       // index into current.media
@@ -146,7 +149,8 @@
     // While a search is active, hidden unhydrated cards never enter the viewport,
     // so their metadata would never load and matches would stay missing:
     // keep hydrating every remaining study in the background (lowest priority).
-    if (!cardQueue.length && state.query) {
+    // Not on Cloud PACS: that would fetch every study; Search asks the store instead.
+    if (!cardQueue.length && state.query && !api.searchable.has(state.root)) {
       for (const s of state.studies) {
         if (!s.hydrated && !s._loading && !s._thumbError && s.cardEl) enqueueCard(s, 4, false);
       }
@@ -480,6 +484,9 @@
   async function loadArchive(root) {
     state.root = root;
     syncDeletedToggle(root);
+    const cs = $("#btn-cloud-search");
+    cs.hidden = !api.searchable.has(root);
+    cs.setAttribute("aria-pressed", String(!!state.cloudFilter));
     showArchive();
     const grid = $("#grid");
     grid.innerHTML = "";
@@ -492,12 +499,13 @@
 
     let entries;
     try {
-      entries = await api.list(root);
+      entries = api.searchable.has(root) ? await cloudList(root) : await api.list(root);
     } catch (e) {
       $("#study-count").textContent = "";
       toast("Could not list storage: " + e.message, true);
       return;
     }
+    if (state.root !== root) return; // storage changed meanwhile
 
     // Every subfolder is a study card: MVR-named or not, the folder may still
     // hold media or a study_info.yaml.
@@ -510,7 +518,7 @@
     }
 
     // When storage has no subfolders (studies), go to file view mode directly!
-    if (folders.length === 0 && trashed.length === 0) {
+    if (folders.length === 0 && trashed.length === 0 && !api.searchable.has(root)) {
       const directStudy = S.newStudy(root, {
         name: MVR.path.basename(root) || root,
         mod_time: "",
@@ -549,7 +557,7 @@
     $("#grid-empty").hidden = state.studies.length > 0;
 
     const total = state.studies.length;
-    $("#study-count").textContent = `${total} stud${total === 1 ? "y" : "ies"}`;
+    $("#study-count").textContent = `${total} stud${total === 1 ? "y" : "ies"}` + scopeNote();
 
     setupCardObservers();
 
@@ -727,6 +735,65 @@
     thumb.appendChild(icon("ic_study", "placeholder"));
   }
 
+  // ---- Cloud PACS search -----------------------------------------------------
+  // A Cloud PACS root lists only searches: the user's filter, else recent
+  // studies widening 3 -> 7 -> 30 -> 365 days while nothing is found.
+  async function cloudList(root) {
+    let entries = [];
+    if (state.cloudFilter) {
+      entries = await api.list(root, false, undefined, state.cloudFilter);
+      state.cloudScope = "search";
+    } else {
+      for (const days of S.RECENT_DAYS) {
+        entries = await api.list(root, false, undefined, { StudyDate: S.recentRange(days) });
+        state.cloudScope = `last ${days} days`;
+        if (entries.length || state.root !== root) break;
+      }
+    }
+    if (entries.truncated) state.cloudScope += ", first 5000: narrow the search";
+    return entries;
+  }
+  const scopeNote = () => api.searchable.has(state.root) && state.cloudScope ? ` · ${state.cloudScope}` : "";
+
+  const CLOUD_FIELDS = [
+    ["PatientName", "Patient name", "text", "e.g. doe john (matches name starts)"],
+    ["PatientID", "MRN (Patient ID)", "text", "exact"],
+    ["from", "Study date from", "date"],
+    ["to", "Study date to", "date"],
+    ["ModalitiesInStudy", "Modality", "text", "e.g. ES or ES,XC"],
+    ["AccessionNumber", "Accession number", "text", "exact"],
+    ["StudyDescription", "Description contains", "text"],
+  ];
+  function openCloudSearch() {
+    const body = el("form", "cloud-search");
+    const inputs = {};
+    for (const [key, label, type, hint] of CLOUD_FIELDS) {
+      const row = el("label", null, label);
+      const inp = el("input");
+      inp.type = type; inp.value = state.cloudForm[key] || ""; inp.maxLength = 64;
+      if (hint) inp.placeholder = hint;
+      inputs[key] = inp;
+      row.appendChild(inp);
+      body.appendChild(row);
+    }
+    const msg = el("div", "errors");
+    body.appendChild(el("div", "muted", "Leave everything empty to show recent studies."));
+    body.appendChild(msg);
+    const run = () => {
+      const form = Object.fromEntries(Object.entries(inputs).map(([k, i]) => [k, i.value]));
+      const r = S.cloudFilter(form);
+      if (r.error) { msg.textContent = r.error; $("#modal-ok").disabled = false; return; }
+      state.cloudForm = form;
+      state.cloudFilter = r.filter;
+      $("#modal").close();
+      loadArchive(state.root);
+    };
+    body.onsubmit = (e) => { e.preventDefault(); run(); };
+    body.appendChild(Object.assign(el("button"), { type: "submit", hidden: true })); // Enter submits
+    openModal("Search Cloud PACS", body, "Search", "primary", run);
+    inputs.PatientName.focus();
+  }
+
   // ---- search ---------------------------------------------------------------
   function applySearch() {
     const q = state.query;
@@ -743,10 +810,10 @@
     if (q) {
       $("#grid-empty").hidden = visible > 0;
       const pending = state.studies.filter((s) => !s.hydrated).length;
-      $("#study-count").textContent = `${visible} of ${state.studies.length} match “${q}”` + (pending ? ` · ${pending} still loading…` : "");
+      $("#study-count").textContent = `${visible} of ${state.studies.length} match “${q}”` + (pending && !api.searchable.has(state.root) ? ` · ${pending} still loading…` : "") + scopeNote();
     } else {
       $("#grid-empty").hidden = state.studies.length > 0;
-      $("#study-count").textContent = `${state.studies.length} stud${state.studies.length === 1 ? "y" : "ies"}`;
+      $("#study-count").textContent = `${state.studies.length} stud${state.studies.length === 1 ? "y" : "ies"}` + scopeNote();
     }
     refreshStatusRight();
     if (q) pumpCardQueue();
@@ -1859,7 +1926,8 @@
     });
 
     const sel = $("#root-select");
-    sel.onchange = () => loadArchive(sel.value);
+    sel.onchange = () => { state.cloudForm = {}; state.cloudFilter = null; loadArchive(sel.value); };
+    $("#btn-cloud-search").onclick = openCloudSearch;
 
     try {
       const [roots, pacs] = await Promise.all([api.roots(), api.pacs()]);

@@ -55,3 +55,23 @@ assert.strictEqual(S.browserPoster({ info: null }, vid, 422), true);
 assert.strictEqual(S.browserPoster({ info: {} }, vid, 404), false);
 assert.strictEqual(S.browserPoster({ info: {} }, { kind: "image" }, 415), false);
 console.log("ok");
+
+// Cloud PACS search: recent ranges end today, widen 3 -> 7 -> 30 -> 365 days.
+{
+  const now = new Date(2026, 10, 10); // 10 Nov 2026, local time
+  assert.deepStrictEqual([...S.RECENT_DAYS], [3, 7, 30, 365]);
+  assert.strictEqual(S.recentRange(3, now), "20261108-20261110");
+  assert.strictEqual(S.recentRange(30, now), "20261012-20261110");
+  assert.strictEqual(S.recentRange(365, now), "20251111-20261110");
+  assert.strictEqual(S.recentRange(3, new Date(2026, 0, 1)), "20251230-20260101");
+
+  const F = (form) => JSON.parse(JSON.stringify(S.cloudFilter(form, now)));
+  assert.deepStrictEqual(F({}), { filter: null });
+  assert.deepStrictEqual(F({ PatientName: " doe " }), { filter: { PatientName: "doe" } });
+  assert.deepStrictEqual(F({ from: "2026-11-01", ModalitiesInStudy: "ES" }), { filter: { ModalitiesInStudy: "ES", StudyDate: "20261101-20261110" } });
+  assert.deepStrictEqual(F({ to: "2020-01-31" }), { filter: { StudyDate: "19000101-20200131" } });
+  assert.ok(F({ from: "2026-11-10", to: "2026-11-01" }).error);
+  // Modality or description alone would pull the whole store.
+  assert.ok(F({ ModalitiesInStudy: "ES" }).error);
+  assert.ok(F({ StudyDescription: "colon" }).error);
+}

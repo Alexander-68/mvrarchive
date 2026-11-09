@@ -353,6 +353,7 @@ button.toggle[aria-pressed="true"] { border-color: var(--error); color: var(--er
 .cloud-search input { min-width: 0; }
 @media (max-width: 480px) { .cloud-search label { grid-template-columns: 1fr; gap: .2rem; } }
 .modal-body .progress { margin-top: .6rem; font-weight: 600; }
+.modal-body .warn { margin-top: .6rem; color: var(--error); font-weight: 600; }
 .modal-body progress { width: 100%; margin-top: .3rem; accent-color: var(--accent); }
 .modal-body .errors { margin-top: .4rem; color: var(--error); white-space: pre-wrap; }
 .modal-foot { display: flex; justify-content: flex-end; gap: .6rem; padding: .6rem 1rem; border-top: 1px solid var(--line); }

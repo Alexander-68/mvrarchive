@@ -24,6 +24,11 @@ dark theme, accent `#42a8d8`.
   parse fallback). Media files: `I/J*` images, `V/W*` videos, `R*` PDF reports.
 - Unknown metadata keys must be **preserved** — display the known ones, never
   drop the rest (matters when we add editing/saving).
+- **Delete** soft-deletes (trash, Restore) on writable shares. On **Cloud PACS**
+  (read-only, `erase:true`) only an OmniGate admin (`/api/me` `admin:true`) gets
+  Delete, for selected studies or selected files, and it is **permanent**: the
+  dialog reads "Delete permanently" and warns it cannot be restored. Non-admins
+  see no Delete there; OmniGate answers 403 regardless.
 
 ## Archive (grid of Study cards)
 

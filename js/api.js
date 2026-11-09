@@ -4,15 +4,15 @@
 //
 // Endpoints (see HOW_TO_MAKE_OMNIGATE_WEB_APPS.md):
 //   GET    /api/platform               -> { platform, product, version, theme, zoom, inactivityMinutes }
-//   GET    /api/me                     -> { username, role }
-//   GET    /api/roots                  -> { roots: [{ name, writable }, ...] }
+//   GET    /api/me                     -> { username, role, admin }
+//   GET    /api/roots                  -> { roots: [{ name, writable, search, erase }, ...] }
 //   GET    /api/files?path=&limit=&cursor= -> { path, entries: [{name,is_dir,size,mod_time}], next_cursor }
 //   GET    /api/files/read?path=       -> raw bytes (streams, honours Range)
 //   GET    /api/files/thumbnail?path=  -> JPEG thumbnail
 //   GET    /api/files/payload?path=    -> JPEG/MP4/PDF wrapped in a DICOM file, served in place (Range OK)
 //   PUT    /api/files/write?path=      -> { path, bytes }
 //   POST   /api/files/mkdir?path=      -> { path, created }
-//   DELETE /api/files/delete?path=     -> { path, deleted }
+//   DELETE /api/files/delete?path=     -> { path, deleted, permanent? }  (permanent: admin on Cloud PACS)
 //   POST   /api/files/copy?src=&dst=   -> { src, dst, copied }   (recursive, across shares)
 //   GET    /api/pacs                   -> { servers: [{ name, host, port, aet }], callingAET }
 //   POST   /api/pacs/{name}/send       -> { ok, wrapped } | 502 { error, exitCode, output }
@@ -167,8 +167,12 @@
   }
 
   // /api/me reports current authenticated user info
+  // admin (from /api/me) lets canDelete allow permanent delete on erase roots.
+  let admin = false;
   async function me() {
-    return reqJSON("GET", "api/me").catch(() => ({}));
+    const d = await reqJSON("GET", "api/me").catch(() => ({}));
+    admin = !!(d && d.admin);
+    return d;
   }
 
   // /api/roots returns named shares. The app uses virtual paths of the form
@@ -178,17 +182,21 @@
   // hide Delete/Paste/Restore there (the server enforces 403 regardless).
   // /priv_data is the app's own store and is never surfaced to users.
   // searchable collects shares listed by search (Cloud PACS; roots[].search).
-  const readOnly = new Set(), searchable = new Set();
+  // erasable collects read-only shares an admin may delete from permanently
+  // (Cloud PACS; roots[].erase).
+  const readOnly = new Set(), searchable = new Set(), erasable = new Set();
   async function roots() {
     const d = await reqJSON("GET", "api/roots");
     readOnly.clear();
     searchable.clear();
+    erasable.clear();
     const visible = [];
     for (const r of d.roots || []) {
       const root = normalizeRoot(r);
       if (!root || isPrivateRoot(root)) continue;
       if (r && r.writable === false) readOnly.add(root);
       if (r && r.search) searchable.add(root);
+      if (r && r.erase) erasable.add(root);
       visible.push(root);
     }
     return visible;
@@ -282,6 +290,10 @@
   async function del(path) {
     return reqJSON("DELETE", "api/files/delete" + q(path));
   }
+  // canDelete: writable shares soft-delete (trash); an admin may also delete,
+  // permanently, from an erase share. isPermanent says which applies.
+  const canDelete = (root) => !readOnly.has(root) || (admin && erasable.has(root));
+  const isPermanent = (root) => readOnly.has(root) && canDelete(root);
   // restore renames a trashed entry (its trash path) back to its original name.
   async function restore(path) {
     return reqJSON("POST", "api/files/restore" + q(path));
@@ -304,5 +316,5 @@
     return d;
   }
 
-  MVR.api = { me, roots, readOnly, searchable, list, readText, readBlob, objectURL, fileURL, thumbURL, thumbnail, payloadURL, mediaURL, dicomDump, dicomFrames, dicomLoadError, dicomPayloadKind, writeText, mkdir, del, restore, copy, pacs, pacsSend, mimeFor };
+  MVR.api = { me, roots, readOnly, searchable, erasable, canDelete, isPermanent, list, readText, readBlob, objectURL, fileURL, thumbURL, thumbnail, payloadURL, mediaURL, dicomDump, dicomFrames, dicomLoadError, dicomPayloadKind, writeText, mkdir, del, restore, copy, pacs, pacsSend, mimeFor };
 })();

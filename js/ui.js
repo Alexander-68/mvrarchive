@@ -10,7 +10,8 @@
 //   Ctrl+A  select all visible studies / all files of the open study
 //   Ctrl+C  copy the selection; Ctrl+V pastes studies into the open storage
 //           or files into the open study (never into the same place)
-//   Delete  delete the selection (after a confirm dialog; gateway soft-deletes)
+//   Delete  delete the selection (after a confirm dialog; gateway soft-deletes;
+//           on Cloud PACS only admins may, and it is permanent)
 //   Deleted (header toggle) browse deleted files: trashed study folders plus
 //           live studies that hold deleted files; selection offers Restore only
 //   Mouse   click to focus+open; wheel zooms the viewer image; drag pans it
@@ -840,7 +841,7 @@
     const d = state.deleted;
     const ro = api.readOnly.has(state.root);
     $("#sel-copy").hidden = !sel || d;
-    $("#sel-delete").hidden = !sel || d || ro;
+    $("#sel-delete").hidden = !sel || d || !api.canDelete(state.root);
     $("#sel-pacs").hidden = !sel || !state.pacs.length || d;
     $("#sel-restore").hidden = !sel || !d || ro;
     $("#sel-paste").hidden = !clip || ro;
@@ -976,9 +977,10 @@
   }
 
   async function deleteSelection() {
-    if (state.deleted || api.readOnly.has(state.root)) return;
+    if (state.deleted || !api.canDelete(state.root)) return;
     const { kind, items } = selectedItems();
     if (!items.length) return;
+    const permanent = api.isPermanent(state.root);
     const body = el("div");
     if (kind === "study") {
       await hydrateAll(items);
@@ -988,7 +990,8 @@
       body.appendChild(el("div", null, plural(items.length, "file")));
     }
     body.appendChild(firstNames(items));
-    openModal("Delete", body, "Delete", "danger", async (run) => {
+    if (permanent) body.appendChild(el("div", "warn", "Permanent: deleted from Cloud PACS, cannot be restored."));
+    openModal(permanent ? "Delete permanently" : "Delete", body, permanent ? "Delete permanently" : "Delete", "danger", async (run) => {
       const prog = el("div", "progress"); body.appendChild(prog);
       let ok = 0; const errors = [];
       for (const it of items) {

@@ -27,6 +27,7 @@ MVRarchive browses imaging studies on OmniGate shares. Users search studies, vie
 - Select studies or files (Space, Ctrl+click, Ctrl+A). The status bar shows selected and copied counts.
 - Copy/Paste (Ctrl+C / Ctrl+V): studies paste into another storage, files into another study; the same place is refused. Copied items keep a green outline.
 - Delete (Delete key) asks for confirmation; the gateway soft-deletes.
+- Cloud PACS delete (OmniGate admins only): selected studies or selected files are deleted from the store **permanently**. The dialog says so (`Delete permanently`); there is no trash and no Restore. Non-admins see no Delete on Cloud PACS.
 - **Show 🗑** browses deleted content (trashed studies and studies holding deleted files); the selection then offers Restore.
 - Send to PACS: pick a registered DICOM or Cloud PACS server. JPEG, BMP, MP4, PDF and DICOM are sent with the study's patient/study tags; other files are skipped. Byte-weighted progress bar with ETA, per-file errors, Cancel. Cloud PACS sends 3 files at a time with at most one video; DICOM servers get one file at a time.
 
@@ -61,7 +62,8 @@ Read-only share flags are still applied to the shares that remain. On a
 read-only share (incl. Cloud PACS) the **Show 🗑** toggle is hidden, since it
 can hold no deleted files; switching to one leaves deleted mode.
 
-Cloud PACS: OmniGate lists Google cloud DICOM stores as read-only storage roots,
+Cloud PACS: OmniGate lists Google cloud DICOM stores as read-only storage roots
+(`erase:true`: an admin's delete is permanent; `api/me` reports `admin`),
 each study folder carrying a generated `study_info.yaml`. Cards show
 `Modality` beside the study date. `GET api/pacs` entries with `kind: "cloud"`
 appear in the send dialog as `Name (Cloud PACS)`. When `SeriesNumberBase` is

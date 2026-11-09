@@ -962,28 +962,39 @@
       // Byte-weighted bar (sizes from the listing; 1 per file if unknown).
       const weight = (f) => f.size || 1;
       const total = files.reduce((n, f) => n + weight(f), 0);
-      const t0 = Date.now(); let done = 0, current = "";
+      const t0 = Date.now(); let done = 0; const active = [];
       const show = () => {
         const secs = (Date.now() - t0) / 1000;
-        let txt = `Sending ${current}... (${Math.min(ok + errors.length + 1, files.length)}/${files.length})`;
+        let txt = `Sending ${active.join(", ")}... (${Math.min(ok + errors.length + active.length, files.length)}/${files.length})`;
         // ponytail: ETA from finished files only (each send is one POST, no byte progress); until one finishes, show elapsed.
         if (secs > 10) txt += done ? ` - about ${fmtDur(secs * (total - done) / done)} left` : ` - ${fmtDur(secs)} elapsed`;
         prog.textContent = txt;
         bar.value = done / total;
       };
       const tick = setInterval(show, 1000);
-      for (const f of files) {
-        if (run.cancel) break;
-        current = f.name; show();
-        try {
-          const tags = S.dicomTags(f.study);
-          const sn = S.seriesNumber(f.study, f.name);
-          if (sn) tags.SeriesNumber = sn;
-          await api.pacsSend(sel.value, f.path, tags); ok++;
+      // Cloud (STOW-RS) is latency-bound: 3 sends in flight. Only worker 0 takes
+      // videos, so at most one video (bandwidth + a full temp copy on the gateway)
+      // runs at a time; with 1 worker the original order is kept.
+      const queue = files.slice();
+      const isVideo = (f) => S.mediaKind(f.name) === "video";
+      const worker = async (w) => {
+        while (!run.cancel) {
+          const i = w === 0 ? 0 : queue.findIndex((f) => !isVideo(f));
+          if (i < 0 || !queue.length) return;
+          const [f] = queue.splice(i, 1);
+          active.push(f.name); show();
+          try {
+            const tags = S.dicomTags(f.study);
+            const sn = S.seriesNumber(f.study, f.name);
+            if (sn) tags.SeriesNumber = sn;
+            await api.pacsSend(sel.value, f.path, tags); ok++;
+          }
+          catch (e) { errors.push(`${f.name}: ${e.message}`); errBox.textContent = errors.join("\n"); }
+          active.splice(active.indexOf(f.name), 1); done += weight(f);
         }
-        catch (e) { errors.push(`${f.name}: ${e.message}`); errBox.textContent = errors.join("\n"); }
-        done += weight(f);
-      }
+      };
+      const cloud = state.pacs.find((p) => p.name === sel.value)?.kind === "cloud";
+      await Promise.all(Array.from({ length: cloud ? 3 : 1 }, (_, w) => worker(w)));
       clearInterval(tick); bar.value = done / total;
       prog.textContent = run.cancel ? `Cancelled after ${ok} sent` : `Sent ${ok} of ${files.length}` + (errors.length ? `, ${errors.length} failed` : "");
       run.finish();

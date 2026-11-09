@@ -1941,6 +1941,13 @@
       }
       const start = startTarget(roots);
       sel.value = start.share;
+      // A deep link into Cloud PACS may predate the recent window: search
+      // the day in its folder name instead.
+      const day = start.studyPath && api.searchable.has(start.share) && MVR.path.basename(start.studyPath).slice(0, 8);
+      if (/^\d{8}$/.test(day) && day !== "00000000") {
+        state.cloudFilter = { StudyDate: day };
+        state.cloudForm = { from: `${day.slice(0, 4)}-${day.slice(4, 6)}-${day.slice(6)}`, to: `${day.slice(0, 4)}-${day.slice(4, 6)}-${day.slice(6)}` };
+      }
       await loadArchive(start.archivePath);
       if (start.studyPath) {
         const idx = state.studies.findIndex((s) => s.path === start.studyPath);

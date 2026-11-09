@@ -794,7 +794,7 @@
   function selectedItems() {
     const studies = state.studies.filter((s) => s.marked);
     if (studies.length) return { kind: "study", items: studies.map((s) => ({ path: s.path, name: s.folderName, from: s.root, study: s })) };
-    const items = state.studies.flatMap((s) => s.media.filter((m) => m.selected).map((m) => ({ path: m.path, name: m.name, from: s.path, study: s })));
+    const items = state.studies.flatMap((s) => s.media.filter((m) => m.selected).map((m) => ({ path: m.path, name: m.name, size: m.size, from: s.path, study: s })));
     return { kind: "file", items };
   }
   function copySelection() {
@@ -877,6 +877,7 @@
     if (items.length > 3) ul.appendChild(el("li", "muted", `... and ${items.length - 3} more`));
     return ul;
   }
+  const fmtDur = (s) => { s = Math.round(s); return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${s % 60}s`; };
   const plural = (n, one, many) => `${n} ${n === 1 ? one : (many || one + "s")}`;
 
   async function hydrateAll(items) {
@@ -941,7 +942,7 @@
     if (!items.length || !state.pacs.length) return;
     if (kind === "study") await hydrateAll(items);
     const all = kind === "study"
-      ? items.flatMap((it) => it.study.media.map((m) => ({ path: m.path, name: m.name, study: it.study })))
+      ? items.flatMap((it) => it.study.media.map((m) => ({ path: m.path, name: m.name, size: m.size, study: it.study })))
       : items;
     const files = all.filter((f) => S.pacsSendable(f.name));
     const skipped = all.length - files.length;
@@ -955,11 +956,25 @@
     openModal("Send to PACS", body, "Send", "primary", async (run) => {
       sel.disabled = true;
       const prog = el("div", "progress"); body.appendChild(prog);
+      const bar = el("progress"); bar.max = 1; bar.value = 0; body.appendChild(bar);
       const errBox = el("div", "errors"); body.appendChild(errBox);
       let ok = 0; const errors = [];
+      // Byte-weighted bar (sizes from the listing; 1 per file if unknown).
+      const weight = (f) => f.size || 1;
+      const total = files.reduce((n, f) => n + weight(f), 0);
+      const t0 = Date.now(); let done = 0, current = "";
+      const show = () => {
+        const secs = (Date.now() - t0) / 1000;
+        let txt = `Sending ${current}... (${Math.min(ok + errors.length + 1, files.length)}/${files.length})`;
+        // ponytail: ETA from finished files only (each send is one POST, no byte progress); until one finishes, show elapsed.
+        if (secs > 10) txt += done ? ` - about ${fmtDur(secs * (total - done) / done)} left` : ` - ${fmtDur(secs)} elapsed`;
+        prog.textContent = txt;
+        bar.value = done / total;
+      };
+      const tick = setInterval(show, 1000);
       for (const f of files) {
         if (run.cancel) break;
-        prog.textContent = `Sending ${f.name}... (${ok + errors.length + 1}/${files.length})`;
+        current = f.name; show();
         try {
           const tags = S.dicomTags(f.study);
           const sn = S.seriesNumber(f.study, f.name);
@@ -967,7 +982,9 @@
           await api.pacsSend(sel.value, f.path, tags); ok++;
         }
         catch (e) { errors.push(`${f.name}: ${e.message}`); errBox.textContent = errors.join("\n"); }
+        done += weight(f);
       }
+      clearInterval(tick); bar.value = done / total;
       prog.textContent = run.cancel ? `Cancelled after ${ok} sent` : `Sent ${ok} of ${files.length}` + (errors.length ? `, ${errors.length} failed` : "");
       run.finish();
     });

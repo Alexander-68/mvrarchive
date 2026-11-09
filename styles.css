@@ -349,6 +349,7 @@ button.toggle[aria-pressed="true"] { border-color: var(--error); color: var(--er
 .modal-body ul { margin: .4rem 0 0; padding-left: 1.2rem; }
 .modal-body select { width: 100%; margin-top: .4rem; }
 .modal-body .progress { margin-top: .6rem; font-weight: 600; }
+.modal-body progress { width: 100%; margin-top: .3rem; accent-color: var(--accent); }
 .modal-body .errors { margin-top: .4rem; color: var(--error); white-space: pre-wrap; }
 .modal-foot { display: flex; justify-content: flex-end; gap: .6rem; padding: .6rem 1rem; border-top: 1px solid var(--line); }
 button.danger { background: var(--error); color: #fff; border-color: transparent; font-weight: 600; }

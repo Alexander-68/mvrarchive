@@ -1,6 +1,39 @@
 # MVRarchive
 
-MVRarchive browses imaging studies on OmniGate shares. Users search studies, view images, video, and DICOM, edit study metadata, recover deleted content, and send files to PACS.
+MVRarchive browses imaging studies on OmniGate shares. Users search studies, view images, video, PDF, and DICOM, view study metadata, copy, delete and recover content, and send files to PACS.
+
+## Features
+
+**Archive (study list)**
+- Storage selector lists the gateway's shares (local, network, Cloud PACS); read-only shares hide write actions.
+- Study cards, newest first: patient name, IDs, date, modality (cloud), and a preview of the first media (four posters when cards are large).
+- Search box filters by folder name, Study ID, patient/animal name, accession number, birth date and study date.
+- Ctrl+wheel or pinch resizes cards. Refresh reloads the share.
+- Deep link: `?path=/Share` opens a share, `?path=/Share/<study folder>` opens that study.
+
+**Study detail**
+- Media grid of stills, videos, PDFs and DICOM; wheel or pinch resizes tiles.
+- Info panel with study metadata from `study_info.yaml` grouped by Patient, Study, etc.; hover a field to see its full value.
+- Prev/Next buttons step through studies without returning to the list.
+
+**Viewer**
+- Fullscreen images, video, PDF and DICOM. Wheel/pinch zooms, drag pans, Enter re-fits.
+- Multi-frame DICOM plays as cine: play/pause, frame slider, speed (Auto, 2-30 fps), Arrow Up/Down steps frames.
+- For DICOM files, Info shows the tag dump. Left/Right or swipe moves between files; Space selects the current file.
+- DICOM type comes from the MVR file name or, for unknown names, the payload's Content-Type.
+
+**Selection and actions**
+- Select studies or files (Space, Ctrl+click, Ctrl+A). The status bar shows selected and copied counts.
+- Copy/Paste (Ctrl+C / Ctrl+V): studies paste into another storage, files into another study; the same place is refused. Copied items keep a green outline.
+- Delete (Delete key) asks for confirmation; the gateway soft-deletes.
+- **Show 🗑** browses deleted content (trashed studies and studies holding deleted files); the selection then offers Restore.
+- Send to PACS: pick a registered DICOM or Cloud PACS server. JPEG, BMP, MP4, PDF and DICOM are sent with the study's patient/study tags; other files are skipped. Byte-weighted progress bar with ETA, per-file errors, Cancel. Cloud PACS sends 3 files at a time with at most one video; DICOM servers get one file at a time.
+
+**Keyboard**: arrows move the focus, Enter goes in, Esc goes out (or clears the search), Space selects, Ctrl+A/C/V, Delete.
+
+**Gateway integration**: user name and Sign out in the header; theme, zoom, inactivity sign-out and screensaver follow OmniGate.
+
+## Implementation notes
 
 For AI coding agents tailoring UI: `index.html` defines screens and controls; `styles.css` sets layout, responsive sizing, and colors; `js/ui.js` owns rendering and interaction. Keep gateway calls in `js/api.js`, study parsing in `js/study.js`, path handling in `js/path.js`, and cine playback logic in `js/cine.js`. `js/yaml.js` handles YAML. Avoid changing these functional files for visual adjustments.
 

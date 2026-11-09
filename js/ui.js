@@ -295,7 +295,7 @@
   // Priority 2 (1.5x ahead), and Priority 3 (1.5x behind)
   function scanAndScheduleLazyLoads() {
     for (const [controller, element] of previewControllers) {
-      if (!element.isConnected || getElementZone(element) !== 1) controller.abort();
+      if (!element.isConnected || !getElementZone(element)) controller.abort();
     }
     if (state.view === "archive") {
       // Drop stale preloads, then queue current viewport before nearby cards.

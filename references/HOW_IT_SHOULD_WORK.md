@@ -34,7 +34,7 @@ dark theme, accent `#42a8d8`.
 
 - Storage-root selector (from `/api/roots`). Studies listed **newest-first**.
 - **Storages behave like browser tabs.** Switching storage remembers where the
-  user was in the one left (open study + focused file, or focused card + scroll,
+  user was in the one left (open study + focused file + scroll, or focused card + scroll,
   search text, Cloud PACS search) and restores it on return, so copy in one
   storage and paste back in another without losing the place. The folder list is
   re-read on return; studies already loaded keep their metadata (Refresh re-reads

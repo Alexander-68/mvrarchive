@@ -1923,8 +1923,8 @@
 
   // ---- storage tabs -----------------------------------------------------------
   // Each storage keeps where the user was, like a browser tab: switching away
-  // and back restores the Cloud PACS search, search text, open study and
-  // focused card / scroll position. The listing is re-read; studies already
+  // and back restores the Cloud PACS search, search text, open study (focused
+  // file, scroll position) and focused card / scroll position. The listing is re-read; studies already
   // loaded keep their metadata (Refresh re-reads everything).
   const storageMemory = new Map(); // share -> snapshot
   async function switchStorage(from, to) {
@@ -1937,6 +1937,7 @@
         focusPath: visibleStudies()[state.focus]?.path || "",
         mediaFocus: state.mediaFocus,
         scroll: $("#view-archive").scrollTop,
+        studyScroll: $(".media-wrap").scrollTop,
         studies: state.studies.filter((s) => !s.trashed && !s.isDirectRoot), deleted: state.deleted,
       });
     }
@@ -1947,16 +1948,20 @@
     state.current = null; // leaving the old storage's study: showArchive must not refocus it
     await loadArchive(m.root, m.deleted === state.deleted ? m.studies : null);
     if (state.root !== m.root) return; // switched again meanwhile
-    if (state.view === "study") { state.mediaFocus = m.mediaFocus || 0; updateMediaFocus(); return; } // direct-file root
+    const restoreStudy = () => {
+      state.mediaFocus = m.mediaFocus || 0;
+      updateMediaFocus();
+      $(".media-wrap").scrollTop = m.studyScroll || 0;
+      scanAndScheduleLazyLoads();
+    };
+    if (state.view === "study") { restoreStudy(); return; } // direct-file root
     const vis = visibleStudies();
     const at = (p) => (p ? vis.findIndex((s) => s.path === p) : -1);
     const open = at(m.studyPath);
     if (open >= 0) {
       state.focus = open;
       await openStudy(vis[open]);
-      if (state.current !== vis[open]) return;
-      state.mediaFocus = m.mediaFocus;
-      updateMediaFocus();
+      if (state.current === vis[open]) restoreStudy();
     } else if (at(m.focusPath) >= 0) {
       state.focus = at(m.focusPath);
       updateArchiveFocus("none");

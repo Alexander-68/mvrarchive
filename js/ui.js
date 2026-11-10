@@ -911,16 +911,69 @@
     if (why) { toast(why, true); return; }
     const clip = state.clip;
     const dest = clip.kind === "study" ? state.root : state.current.path;
-    let ok = 0;
-    const errors = [];
-    for (const it of clip.items) {
-      toast(`Copying ${it.name}… (${ok + 1}/${clip.items.length})`);
-      try { await api.copy(it.path, MVR.path.join(dest, it.name)); ok++; }
-      catch (e) { errors.push(`${it.name}: ${e.message}`); }
-    }
-    toast(errors.length ? `Copied ${ok}, failed ${errors.length}: ${errors[0]}` : `Copied ${ok} ${ok === 1 ? "item" : "items"}`, !!errors.length);
-    if (clip.kind === "study") loadArchive(state.root);
-    else { state.current.hydrated = false; openStudy(state.current); }
+    const items = clip.items;
+    const body = el("div");
+    body.appendChild(el("div", null, `${plural(items.length, clip.kind === "study" ? "study" : "file", clip.kind === "study" ? "studies" : "files")} into ${dest}`));
+    body.appendChild(firstNames(items));
+    openModal("Paste", body, "Paste", "primary", async (run) => {
+      const prog = el("div", "progress", "Listing..."); body.appendChild(prog);
+      const bar = el("progress"); bar.max = 1; bar.value = 0; body.appendChild(bar);
+      const errBox = el("div", "errors"); body.appendChild(errBox);
+      const errors = [];
+      const fail = (name, e) => { errors.push(`${name}: ${e.message}`); errBox.textContent = errors.join("\n"); };
+      // Expand studies into folders + files so progress is per file, not per
+      // study (a whole-study server copy is one silent request). Existing
+      // targets are refused, as the server copy would (409).
+      const dirs = [], files = [];
+      const taken = new Set((await api.list(dest).catch(() => [])).map((e) => e.name.toLowerCase()));
+      const walk = async (src, dst) => {
+        dirs.push(dst);
+        for (const e of await api.list(src)) {
+          if (run.cancel) return;
+          const s = MVR.path.join(src, e.name), d = MVR.path.join(dst, e.name);
+          if (e.is_dir) await walk(s, d); else files.push({ src: s, dst: d, name: e.name, size: e.size });
+        }
+      };
+      for (const it of items) {
+        if (run.cancel) break;
+        const dst = MVR.path.join(dest, it.name);
+        if (taken.has(it.name.toLowerCase())) { fail(it.name, new Error("already exists")); continue; }
+        if (clip.kind === "file") { files.push({ src: it.path, dst, name: it.name, size: it.size }); continue; }
+        prog.textContent = `Listing ${it.name}...`;
+        try { await walk(it.path, dst); } catch (e) { fail(it.name, e); }
+      }
+      for (const d of dirs) { if (run.cancel) break; try { await api.mkdir(d); } catch (e) { fail(d, e); } }
+      // Byte-weighted when every size is known (cloud .dcm may report none), else per file.
+      const weight = files.every((f) => f.size > 0) ? (f) => f.size : () => 1;
+      const total = files.reduce((n, f) => n + weight(f), 0) || 1;
+      const t0 = Date.now(); let done = 0, ok = 0; const active = [];
+      const show = () => {
+        const secs = (Date.now() - t0) / 1000;
+        let txt = `Copying ${active.join(", ")}... (${Math.min(ok + errors.length + active.length, files.length)}/${files.length})`;
+        if (secs > 5) txt += done ? ` - about ${fmtDur(secs * (total - done) / done)} left` : ` - ${fmtDur(secs)} elapsed`;
+        prog.textContent = txt;
+        bar.value = done / total;
+      };
+      const tick = setInterval(show, 1000);
+      // Cloud PACS reads are latency-bound: 3 copies in flight from a searchable root.
+      const queue = files.slice();
+      const worker = async () => {
+        while (!run.cancel && queue.length) {
+          const f = queue.shift();
+          active.push(f.name); show();
+          try { await api.copy(f.src, f.dst); ok++; } catch (e) { fail(f.name, e); }
+          active.splice(active.indexOf(f.name), 1); done += weight(f);
+        }
+      };
+      const fromCloud = items.some((it) => api.searchable.has(it.study.root));
+      await Promise.all(Array.from({ length: fromCloud ? 3 : 1 }, worker));
+      clearInterval(tick); bar.value = done / total;
+      prog.textContent = run.cancel ? `Cancelled after ${plural(ok, "file")} copied` : `Copied ${ok} of ${plural(files.length, "file")}` + (errors.length ? `, ${errors.length} failed` : "");
+      run.finish();
+      if (clip.kind === "study") loadArchive(state.root);
+      else if (state.current) { state.current.hydrated = false; openStudy(state.current); }
+    });
+    $("#modal-ok").click(); // paste was explicit: start at once, the modal is for progress + Cancel
   }
 
   // ---- modal (delete confirm / PACS send) ------------------------------------

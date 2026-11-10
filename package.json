@@ -1,6 +1,6 @@
 {
   "name": "mvrarchive",
-  "version": "1.0.261110",
+  "version": "1.0.261111",
   "description": "MVRarchive - imaging study browser",
   "scripts": {
     "test": "node --test test_cine.js test_cloud_delete.js test_cloud_study.js test_dicom_activation.js test_deleted_toggle.js test_dicom_kind.js test_dicom_tags.js test_directory_pages.js test_gateway_session.js test_lazy_schedule.js test_roots.js test_thumbnail_retry.js",

@@ -759,10 +759,12 @@
   // Nothing in the last year: say whether the store is empty or holds older
   // studies (count, date range). Late and best-effort: failures keep the plain text.
   async function cloudEmptyNote(root) {
-    let s;
-    try { s = await api.summary(root); } catch { return; }
+    const days = S.RECENT_DAYS.at(-1);
+    $("#grid-empty").textContent = `No studies in the last ${days} days. Checking what this storage holds…`;
+    let text;
+    try { text = S.summaryText(await api.summary(root), days); } catch { text = "No studies found."; }
     if (state.root !== root || state.cloudFilter || state.studies.length || $("#grid-empty").hidden) return;
-    $("#grid-empty").textContent = S.summaryText(s, S.RECENT_DAYS.at(-1));
+    $("#grid-empty").textContent = text;
   }
   const scopeNote = () => api.searchable.has(state.root) && state.cloudScope ? ` · ${state.cloudScope}` : "";
 

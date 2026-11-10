@@ -482,7 +482,9 @@
     }
   }
 
-  async function loadArchive(root) {
+  // reuse: studies already loaded for this root (storage switch-back), kept by
+  // path so their metadata, order and thumbnails come back without re-reading.
+  async function loadArchive(root, reuse) {
     state.root = root;
     syncDeletedToggle(root);
     const cs = $("#btn-cloud-search");
@@ -536,7 +538,12 @@
 
     // Newest study first: folder-name timestamp (or mod time) now, and again
     // via resortCards once a study's metadata StudyDate arrives.
-    state.studies = folders.map((e) => S.newStudy(root, e)).sort(byDate);
+    const old = new Map((reuse || []).map((s) => [s.path, s]));
+    state.studies = folders.map((e) => {
+      const s = old.get(MVR.path.join(root, e.name));
+      if (s) { s.marked = false; return s; }
+      return S.newStudy(root, e);
+    }).sort(byDate);
     if (state.deleted) {
       // Only studies holding deleted files belong here, and that takes a
       // listing each: hydrate up front (a few at a time) rather than lazily,
@@ -1914,6 +1921,50 @@
     };
   }
 
+  // ---- storage tabs -----------------------------------------------------------
+  // Each storage keeps where the user was, like a browser tab: switching away
+  // and back restores the Cloud PACS search, search text, open study and
+  // focused card / scroll position. The listing is re-read; studies already
+  // loaded keep their metadata (Refresh re-reads everything).
+  const storageMemory = new Map(); // share -> snapshot
+  async function switchStorage(from, to) {
+    if (from) {
+      const cur = state.current;
+      storageMemory.set(from, {
+        root: state.root,
+        cloudForm: state.cloudForm, cloudFilter: state.cloudFilter, query: state.query,
+        studyPath: cur && !cur.isDirectRoot ? cur.path : "",
+        focusPath: visibleStudies()[state.focus]?.path || "",
+        mediaFocus: state.mediaFocus,
+        scroll: $("#view-archive").scrollTop,
+        studies: state.studies.filter((s) => !s.trashed && !s.isDirectRoot), deleted: state.deleted,
+      });
+    }
+    const m = storageMemory.get(to) || { root: to, cloudForm: {}, cloudFilter: null, query: "" };
+    state.cloudForm = m.cloudForm;
+    state.cloudFilter = m.cloudFilter;
+    state.query = $("#search").value = m.query;
+    state.current = null; // leaving the old storage's study: showArchive must not refocus it
+    await loadArchive(m.root, m.deleted === state.deleted ? m.studies : null);
+    if (state.root !== m.root) return; // switched again meanwhile
+    if (state.view === "study") { state.mediaFocus = m.mediaFocus || 0; updateMediaFocus(); return; } // direct-file root
+    const vis = visibleStudies();
+    const at = (p) => (p ? vis.findIndex((s) => s.path === p) : -1);
+    const open = at(m.studyPath);
+    if (open >= 0) {
+      state.focus = open;
+      await openStudy(vis[open]);
+      if (state.current !== vis[open]) return;
+      state.mediaFocus = m.mediaFocus;
+      updateMediaFocus();
+    } else if (at(m.focusPath) >= 0) {
+      state.focus = at(m.focusPath);
+      updateArchiveFocus("none");
+      $("#view-archive").scrollTop = m.scroll;
+      scanAndScheduleLazyLoads();
+    }
+  }
+
   function rootLabel(root) {
     return root.startsWith("/") ? root.slice(1) : root;
   }
@@ -2020,7 +2071,8 @@
     });
 
     const sel = $("#root-select");
-    sel.onchange = () => { state.cloudForm = {}; state.cloudFilter = null; loadArchive(sel.value); };
+    let share = "";
+    sel.onchange = () => { const from = share; share = sel.value; switchStorage(from, share); };
     $("#btn-cloud-search").onclick = openCloudSearch;
 
     try {
@@ -2034,7 +2086,7 @@
         sel.appendChild(opt);
       }
       const start = startTarget(roots);
-      sel.value = start.share;
+      sel.value = share = start.share;
       // A deep link into Cloud PACS may predate the recent window: search
       // the day in its folder name instead.
       const day = start.studyPath && api.searchable.has(start.share) && MVR.path.basename(start.studyPath).slice(0, 8);

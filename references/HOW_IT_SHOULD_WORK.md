@@ -33,6 +33,12 @@ dark theme, accent `#42a8d8`.
 ## Archive (grid of Study cards)
 
 - Storage-root selector (from `/api/roots`). Studies listed **newest-first**.
+- **Storages behave like browser tabs.** Switching storage remembers where the
+  user was in the one left (open study + focused file, or focused card + scroll,
+  search text, Cloud PACS search) and restores it on return, so copy in one
+  storage and paste back in another without losing the place. The folder list is
+  re-read on return; studies already loaded keep their metadata (Refresh re-reads
+  all). Memory lasts for the page session only.
 - Cards load progressively: the grid paints immediately, then each card hydrates
   its counts, metadata and thumbnail in the background (bounded concurrency).
 - **Card content:** thumbnail (first image), patient/animal name (falls back to

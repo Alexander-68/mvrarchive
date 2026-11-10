@@ -316,5 +316,13 @@
     return d;
   }
 
-  MVR.api = { me, roots, readOnly, searchable, erasable, canDelete, isPermanent, list, readText, readBlob, objectURL, fileURL, thumbURL, thumbnail, payloadURL, mediaURL, dicomDump, dicomFrames, dicomLoadError, dicomPayloadKind, writeText, mkdir, del, restore, copy, pacs, pacsSend, mimeFor };
+  // summary: a Cloud PACS root's {studies, first, last} (see S.summaryText).
+  async function summary(root) {
+    const res = await req("GET", "api/files/summary" + q(root));
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(d.error || `${res.status}`);
+    return d;
+  }
+
+  MVR.api = { me, roots, summary, readOnly, searchable, erasable, canDelete, isPermanent, list, readText, readBlob, objectURL, fileURL, thumbURL, thumbnail, payloadURL, mediaURL, dicomDump, dicomFrames, dicomLoadError, dicomPayloadKind, writeText, mkdir, del, restore, copy, pacs, pacsSend, mimeFor };
 })();

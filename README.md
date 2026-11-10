@@ -8,7 +8,7 @@ MVRarchive browses imaging studies on OmniGate shares. Users search studies, vie
 - Storage selector lists the gateway's shares (local, network, Cloud PACS); read-only shares hide write actions.
 - Study cards, newest first: patient name, IDs, date, modality (cloud), and a preview of the first media (four posters when cards are large).
 - Search box filters by folder name, Study ID, patient/animal name, accession number, birth date and study date.
-- Cloud PACS opens on recent studies: the last 3 days, widening to 7, 30 and 365 days while none are found. **Search** asks the store by patient name (Google fuzzy match), MRN, study date range, modality, accession number and description; leave every field empty to go back to recent studies. The status bar names the scope (`last 3 days`, `search`). The search box then filters only the loaded cards.
+- Cloud PACS opens on recent studies: the last 3 days, widening to 7, 30 and 365 days while none are found; if the last year is empty too, it says whether the store is empty or how many studies it holds and their date range. **Search** asks the store by patient name (Google fuzzy match), MRN, study date range, modality, accession number and description; leave every field empty to go back to recent studies. The status bar names the scope (`last 3 days`, `search`). The search box then filters only the loaded cards.
 - Ctrl+wheel or pinch resizes cards. Refresh reloads the share.
 - Deep link: `?path=/Share` opens a share, `?path=/Share/<study folder>` opens that study.
 

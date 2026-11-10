@@ -493,6 +493,7 @@
     grid.innerHTML = "";
     applyCardSize();
     $("#grid-empty").hidden = true;
+    $("#grid-empty").textContent = "No studies found.";
     $("#study-count").textContent = "Loading…";
     refreshStatusRight();
 
@@ -556,6 +557,7 @@
     }
     state.focus = 0;
     $("#grid-empty").hidden = state.studies.length > 0;
+    if (!state.studies.length && api.searchable.has(root) && !state.cloudFilter) cloudEmptyNote(root);
 
     const total = state.studies.length;
     $("#study-count").textContent = `${total} stud${total === 1 ? "y" : "ies"}` + scopeNote();
@@ -753,6 +755,14 @@
     }
     if (entries.truncated) state.cloudScope += ", first 5000: narrow the search";
     return entries;
+  }
+  // Nothing in the last year: say whether the store is empty or holds older
+  // studies (count, date range). Late and best-effort: failures keep the plain text.
+  async function cloudEmptyNote(root) {
+    let s;
+    try { s = await api.summary(root); } catch { return; }
+    if (state.root !== root || state.cloudFilter || state.studies.length) return;
+    $("#grid-empty").textContent = S.summaryText(s, S.RECENT_DAYS.at(-1));
   }
   const scopeNote = () => api.searchable.has(state.root) && state.cloudScope ? ` · ${state.cloudScope}` : "";
 

@@ -65,6 +65,14 @@ console.log("ok");
   assert.strictEqual(S.recentRange(365, now), "20251111-20261110");
   assert.strictEqual(S.recentRange(3, new Date(2026, 0, 1)), "20251230-20260101");
 
+  assert.strictEqual(S.summaryText({ studies: 0 }, 365), "This storage is empty.");
+  assert.strictEqual(S.summaryText({ studies: 1234, first: "20190302", last: "20240101" }, 365),
+    "No studies in the last 365 days. This storage holds 1,234 studies dated 2019-03-02 to 2024-01-01. Use Search to open them.");
+  assert.strictEqual(S.summaryText({ studies: -1, first: "20190302", last: "20190302" }, 365),
+    "No studies in the last 365 days. This storage holds studies dated 2019-03-02. Use Search to open them.");
+  assert.strictEqual(S.summaryText({ studies: 1 }, 365),
+    "No studies in the last 365 days. This storage holds 1 study, none with a study date. Use Search to open them.");
+
   const F = (form) => JSON.parse(JSON.stringify(S.cloudFilter(form, now)));
   assert.deepStrictEqual(F({}), { filter: null });
   assert.deepStrictEqual(F({ PatientName: " doe " }), { filter: { PatientName: "doe" } });

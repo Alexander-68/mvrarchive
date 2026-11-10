@@ -355,6 +355,11 @@ implemented). Layout:
   deep link) open without listing the whole store: OmniGate resolves them by
   the folder's date. MVRarchive opens on the last 3 days and widens to 7, 30,
   365 while empty.
+- `GET /api/files/summary?path=/<cloud root>` -> `{"studies":N,"first":"YYYYMMDD","last":"YYYYMMDD"}`.
+  `studies` is `0` for an empty store, `-1` when the count is unavailable
+  (Google store metrics need `healthcare.dicomStores.get`). Dates come from
+  `limit=1` QIDO probes (binary search, a few seconds, cached about 60 s);
+  undated studies leave them out.
 - Files `I####_<12hex>.dcm` (images), `V...` (video), `R...` (PDF report).
 - Virtual `study_info.yaml` per study (WlStudyDate, WlStudyTime,
   SeriesNumberBase, CloudPACS, ...).

@@ -401,8 +401,19 @@
     return { filter: f };
   }
 
+  // summaryText explains an empty recent listing from OmniGate's store summary
+  // ({studies: 0 empty, -1 unknown count; first/last YYYYMMDD}).
+  function summaryText(s, days) {
+    if (!s.studies) return "This storage is empty.";
+    const d = (v) => `${v.slice(0, 4)}-${v.slice(4, 6)}-${v.slice(6, 8)}`;
+    const n = s.studies > 0 ? `${s.studies.toLocaleString("en-US")} stud${s.studies === 1 ? "y" : "ies"}` : "studies";
+    const when = !s.first ? ", none with a study date"
+      : s.first === s.last ? ` dated ${d(s.first)}` : ` dated ${d(s.first)} to ${d(s.last)}`;
+    return `No studies in the last ${days} days. This storage holds ${n}${when}. Use Search to open them.`;
+  }
+
   MVR.study = {
-    RECENT_DAYS, recentRange, cloudFilter,
+    RECENT_DAYS, recentRange, cloudFilter, summaryText,
     showDeleted: false,
     isStudyFolder, mediaKind, parseStampName, newStudy, trashedStudy, hydrate,
     displayName, studyDate, fullName, formatDOB, formatDate, fmtSize,

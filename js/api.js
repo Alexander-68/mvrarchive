@@ -171,7 +171,7 @@
   let admin = false;
   async function me() {
     const d = await reqJSON("GET", "api/me").catch(() => ({}));
-    admin = !!(d && d.admin);
+    admin = !!(d && (d.admin || d.role === "admin"));
     return d;
   }
 

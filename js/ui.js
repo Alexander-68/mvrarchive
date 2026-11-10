@@ -952,14 +952,40 @@
     await Promise.all(items.map((it) => it.study.hydrated ? null : S.hydrate(it.study).then(() => fillCard(it.study))));
   }
   // After files or studies vanish, reload what showed them.
-  function reloadAfter(kind, items) {
+  async function reloadAfter(kind, items) {
     if (kind === "study" || state.deleted) { loadArchive(state.root); return; }
     const touched = new Set(items.map((it) => it.study));
-    for (const st of touched) {
-      st.hydrated = false;
-      if (st !== state.current) S.hydrate(st).then(() => fillCard(st)).catch(() => {});
+    if (state.current && touched.has(state.current)) {
+      state.current.hydrated = false;
+      try {
+        await S.hydrate(state.current);
+      } catch (e) {
+        state.current.media = [];
+      }
+      if (!state.current.media.length && (api.searchable.has(state.root) || api.isPermanent(state.root))) {
+        if (state.viewer.open) closeViewer();
+        state.studies = state.studies.filter((s) => s !== state.current);
+        state.current = null;
+        showArchive();
+        loadArchive(state.root);
+        return;
+      }
+      openStudy(state.current);
+      fillCard(state.current);
+      scheduleResort();
     }
-    if (state.current && touched.has(state.current)) openStudy(state.current);
+    for (const st of touched) {
+      if (st === state.current) continue;
+      st.hydrated = false;
+      S.hydrate(st).then(() => {
+        if (!st.media.length && (api.searchable.has(state.root) || api.isPermanent(state.root))) {
+          state.studies = state.studies.filter((s) => s !== st);
+          applySearch();
+        } else {
+          fillCard(st);
+        }
+      }).catch(() => {});
+    }
   }
 
   async function restoreSelection() {
@@ -1002,7 +1028,7 @@
       $("#modal").close();
       deselectAll();
       toast(errors.length ? `Deleted ${ok}, failed ${errors.length}: ${errors[0]}` : `Deleted ${plural(ok, "item")}`, !!errors.length);
-      reloadAfter(kind, items);
+      await reloadAfter(kind, items);
     });
   }
 

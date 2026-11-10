@@ -31,5 +31,10 @@ const json = (o) => new Response(JSON.stringify(o));
   assert.ok(api.canDelete("/Cloud") && api.isPermanent("/Cloud"), "admin: permanent cloud delete");
   assert.ok(!api.canDelete("/NAS"), "admin still cannot delete on a plain read-only share");
   assert.ok(!api.isPermanent("/DATA"));
+
+  responses = [json({ username: "a", role: "admin" })];
+  await api.me();
+  assert.ok(api.canDelete("/Cloud") && api.isPermanent("/Cloud"), "role admin: permanent cloud delete");
+
   console.log("test_cloud_delete: ok");
 })().catch((e) => { console.error(e); process.exit(1); });

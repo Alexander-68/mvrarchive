@@ -761,7 +761,7 @@
   async function cloudEmptyNote(root) {
     let s;
     try { s = await api.summary(root); } catch { return; }
-    if (state.root !== root || state.cloudFilter || state.studies.length) return;
+    if (state.root !== root || state.cloudFilter || state.studies.length || $("#grid-empty").hidden) return;
     $("#grid-empty").textContent = S.summaryText(s, S.RECENT_DAYS.at(-1));
   }
   const scopeNote = () => api.searchable.has(state.root) && state.cloudScope ? ` · ${state.cloudScope}` : "";

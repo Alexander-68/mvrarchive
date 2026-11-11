@@ -18,7 +18,8 @@ assert.strictEqual(t.StudyInstanceUID, "1.2.826.0.1.3680043.8.498.10293847561234
 assert.strictEqual(t.PatientBirthDate, "19760412");
 assert.strictEqual(t.PatientSex, "F");
 assert.strictEqual(t.StudyDescription, 'Gastroscopy, biopsy "antrum"');
-assert.strictEqual(info.Modality, "ES/XC");
+assert.strictEqual(info.ModalitiesInStudy, "ES/XC");
+assert.strictEqual(t.Modality, undefined);
 
 assert.strictEqual(S.seriesNumber(study, "I0001.jpg"), "101");
 assert.strictEqual(S.seriesNumber(study, "x.JPEG"), "101");

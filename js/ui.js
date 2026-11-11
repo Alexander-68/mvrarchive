@@ -653,7 +653,7 @@
     const card = study.cardEl;
     if (!card) return;
     card.querySelector(".card-title").textContent = S.displayName(study);
-    card.querySelector(".card-date").textContent = [S.formatDate(S.studyDate(study)), study.info && study.info.Modality].filter(Boolean).join(" · ");
+    card.querySelector(".card-date").textContent = [S.formatDate(S.studyDate(study)), study.info && (study.info.ModalitiesInStudy || study.info.Modality)].filter(Boolean).join(" · ");
 
     const c = study.counters;
     const meta = card.querySelector(".card-meta");

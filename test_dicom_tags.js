@@ -34,6 +34,12 @@ assert.strictEqual(bt.StudyDate + bt.StudyTime, "20250905101500");
 // patient_info.json may carry PatientID directly; it wins over StudyID.
 assert.strictEqual(S.dicomTags({ folderName: "x", info: { PatientID: "MRN9", StudyID: "S1" } }).PatientID, "MRN9");
 
+// Modality mapping: single valid code string maps; slash strings (ModalitiesInStudy) are skipped.
+assert.strictEqual(S.dicomTags({ folderName: "x", info: { Modality: "GM" } }).Modality, "GM");
+assert.strictEqual(S.dicomTags({ folderName: "x", info: { scheduledModality: "SC" } }).Modality, "SC");
+assert.strictEqual(S.dicomTags({ folderName: "x", info: { Modality: "ES/XC" } }).Modality, undefined);
+assert.strictEqual(S.dicomTags({ folderName: "x", info: { ModalitiesInStudy: "ES/XC" } }).Modality, undefined);
+
 assert.strictEqual(S.mediaKind("V0001.dcm"), "video");
 assert.strictEqual(S.mediaKind("VLp.X.1.2.276.0.7230010.903.dcm"), "image");
 assert.strictEqual(S.mediaKind("VVp.X.1.2.276.0.7230010.903.dcm"), "video", "storescp Video Photographic");

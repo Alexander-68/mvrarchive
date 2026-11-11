@@ -324,7 +324,8 @@
       }
     }
     if (i.PregnancyStatus >= 1 && i.PregnancyStatus <= 4) t.PregnancyStatus = String(i.PregnancyStatus);
-    const mod = String(i.Modality || i.scheduledModality || "").trim().toUpperCase();
+    let mod = String(i.Modality || i.ScheduledModality || i.scheduledModality || "").trim().toUpperCase();
+    if (mod === "ENDO") mod = "ES";
     if (mod && /^[A-Z0-9]{2,16}$/.test(mod)) t.Modality = mod;
     t.StudyInstanceUID = i.StudyInstanceUID || studyUID(study.folderName);
     return t;

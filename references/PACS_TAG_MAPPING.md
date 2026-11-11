@@ -71,7 +71,7 @@ empty produces no tag. `first non-empty wins` lists alternatives in order.
 | SpecialNeeds (0038,0050) | LO | `SpecialNeeds` | |
 | RequestedProcedureID (0040,1001) | SH | `RequestedProcedureID` | |
 | RequestedProcedureComments (0040,1400) | LT | `RequestedProcedureComments` | |
-| Modality (0008,0060) | CS | `Modality`, else `scheduledModality` | sent only if single valid code string (e.g. `ES`, `GM`, `SC`, `XC`); multi-modality strings (e.g. `ModalitiesInStudy`) fall back to destination default |
+| Modality (0008,0060) | CS | `Modality`, else `ScheduledModality` / `scheduledModality` | sent only if single valid code string (e.g. `ES`, `GM`, `SC`, `XC`); normalizes `ENDO` → `ES`; multi-modality strings (e.g. `ModalitiesInStudy`) fall back to destination default |
 | PlacerOrderNumber (0040,2016) | LO | `PlacerOrderNumber` | |
 
 Not mapped (the recorder writes them, the archive does not yet): anatomic

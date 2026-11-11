@@ -653,7 +653,9 @@
     const card = study.cardEl;
     if (!card) return;
     card.querySelector(".card-title").textContent = S.displayName(study);
-    card.querySelector(".card-date").textContent = [S.formatDate(S.studyDate(study)), study.info && (study.info.ModalitiesInStudy || study.info.Modality)].filter(Boolean).join(" · ");
+    let mod = study.info && (study.info.ModalitiesInStudy || study.info.Modality || study.info.ScheduledModality);
+    if (mod === "ENDO") mod = "ES";
+    card.querySelector(".card-date").textContent = [S.formatDate(S.studyDate(study)), mod].filter(Boolean).join(" · ");
 
     const c = study.counters;
     const meta = card.querySelector(".card-meta");

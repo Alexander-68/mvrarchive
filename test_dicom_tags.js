@@ -35,6 +35,7 @@ assert.strictEqual(bt.StudyDate + bt.StudyTime, "20250905101500");
 assert.strictEqual(S.dicomTags({ folderName: "x", info: { PatientID: "MRN9", StudyID: "S1" } }).PatientID, "MRN9");
 
 // Modality mapping: single valid code string maps; slash strings (ModalitiesInStudy) are skipped.
+assert.strictEqual(S.dicomTags({ folderName: "x", info: { Modality: "ES" } }).Modality, "ES");
 assert.strictEqual(S.dicomTags({ folderName: "x", info: { Modality: "GM" } }).Modality, "GM");
 assert.strictEqual(S.dicomTags({ folderName: "x", info: { scheduledModality: "SC" } }).Modality, "SC");
 assert.strictEqual(S.dicomTags({ folderName: "x", info: { Modality: "ES/XC" } }).Modality, undefined);

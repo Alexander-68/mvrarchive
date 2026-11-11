@@ -71,7 +71,7 @@ empty produces no tag. `first non-empty wins` lists alternatives in order.
 | SpecialNeeds (0038,0050) | LO | `SpecialNeeds` | |
 | RequestedProcedureID (0040,1001) | SH | `RequestedProcedureID` | |
 | RequestedProcedureComments (0040,1400) | LT | `RequestedProcedureComments` | |
-| Modality (0008,0060) | CS | `Modality`, else `scheduledModality` | sent only if single valid code string (e.g. `GM`, `SC`, `XC`); multi-modality strings (e.g. `ModalitiesInStudy`) fall back to destination default |
+| Modality (0008,0060) | CS | `Modality`, else `scheduledModality` | sent only if single valid code string (e.g. `ES`, `GM`, `SC`, `XC`); multi-modality strings (e.g. `ModalitiesInStudy`) fall back to destination default |
 | PlacerOrderNumber (0040,2016) | LO | `PlacerOrderNumber` | |
 
 Not mapped (the recorder writes them, the archive does not yet): anatomic
@@ -104,7 +104,7 @@ them, except the UIDs and series/instance numbers.
 
 | | JPEG (`.jpg`) | BMP (`.bmp`) | MP4 (`.mp4`) | PDF (`.pdf`) |
 |---|---|---|---|---|
-| SOP class | By modality: `XC` → VL Photographic `…77.1.4`; `GM` → VL Microscopic `…77.1.2`; `SC`/`OT`/`US` → Secondary Capture `…7` | same as JPEG | By modality: `XC` → Video Photographic `…77.1.4.1`; `GM` → Video Microscopic `…77.1.2.1`; `SC`/`OT`/`US` → Multi-frame True Color SC `…7.4` | Encapsulated PDF `…104.1` |
+| SOP class | By modality: `XC` → VL Photographic `…77.1.4`; `ES` → VL Endoscopic `…77.1.1`; `GM` → VL Microscopic `…77.1.2`; `SC`/`OT` → Secondary Capture `…7` | same as JPEG | By modality: `XC` → Video Photographic `…77.1.4.1`; `ES` → Video Endoscopic `…77.1.1.1`; `GM` → Video Microscopic `…77.1.2.1`; `SC`/`OT` → Multi-frame True Color SC `…7.4` | Encapsulated PDF `…104.1` |
 | Transfer syntax | JPEG Baseline `1.2.4.50` | Explicit VR LE | H.264 `1.2.4.102` / HEVC `1.2.4.107` | Explicit VR LE |
 | Payload | JPEG bytes encapsulated, one fragment | decoded to 8-bit RGB, native pixel data | MP4 bytes encapsulated, one fragment (≤ 4 GB) | PDF bytes in EncapsulatedDocument (0042,0011) |
 | Rows / Columns | from JPEG header | from BMP header | from `stsd` | – |

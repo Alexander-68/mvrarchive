@@ -5,10 +5,10 @@ app hosted by **OmniGate**. The app browses recorded imaging *Studies* (folders
 in the MVR Archive standard) on a NAS/local storage, reachable only through
 OmniGate's user-level file API.
 
-> **Status (2026-06-08): Phase 1 complete and deployed** on
-> `http://127.0.0.1:9090/` — browse, search, and view (images, video, PDF) all
-> work against sample data. See `HOW_IT_SHOULD_WORK.md` for the agreed UX details.
-> Next milestone: Phase 2 (edit / copy / delete). Real archive data pending.
+> **Status (2026-11-12):** Phase 1 done; Phase 2 done except **Edit Study info**
+> (next); Send to PACS, DICOM viewing/cine and Cloud PACS are done. `README.md` is
+> the current feature list; `HOW_IT_SHOULD_WORK.md` has the agreed UX details.
+> Remaining after Edit: Phase 3 (annotation, report builder); video trim undecided.
 
 ---
 
@@ -40,12 +40,11 @@ added/extended when justified — propose them, implement in a separate session.
 - `read` streams with `Range` and the right content-type, so `<img>`/`<video>`/
   `<iframe>` can point **directly** at the read URL — video streams and seeks
   natively, PDFs render. No blob fetching needed. *(Resolves former Q1.)*
-- **Thumbnails** are server-side for images. **Video** posters are not (the
-  endpoint is images-only); they're captured in-browser (hidden `<video>` seeks
-  ~1 s in, drawn to `<canvas>`). A server-side video thumbnail is a possible
-  future OmniGate addition.
-- No DICOM toolkit or PACS networking server-side; anything the Android app did
-  with native libs must be done in-browser (Canvas/WASM) or deferred.
+- **Thumbnails** are server-side for images and, when OmniGate has ffmpeg, for
+  videos and WebP/HEIC; without ffmpeg the app captures video posters in-browser
+  (hidden `<video>` seeks ~1 s in, drawn to `<canvas>`).
+- OmniGate now provides DICOM helpers (`/api/files/payload`, `dicom-frames`,
+  `/api/dcmtk/dcmdump`) and PACS sending (`/api/pacs`).
 - No partial writes — `write` rewrites a whole file.
 - The jail rejects any path outside an `--allow-dir` root; all paths must be
   built from a root returned by `/api/roots`.
@@ -182,13 +181,14 @@ Functions confirmed from the Android Archive (`ArchiveFragment.kt`,
   cursor, drag/touch pan, swipe + arrows to change file. Zoom/pan **persist**
   across image switches; **instant** image swap (no blank, no fade).
 
-### Phase 2 — Study management — **next**
-- **Edit Study info** form (well-known fields) → dual-write `study_info.yaml` +
+### Phase 2 — Study management — **mostly done**
+- [ ] **Edit Study info** form — **next** (well-known fields) → dual-write `study_info.yaml` +
   `patient_info.json`, preserving unknown keys (read-before-write guard).
-- **Copy Study** to another root (`mkdir` + per-file read→write copy, with
-  progress). Timestamp-suffix on name collision.
-- **Delete** Study / file (confirm dialog with counts) via `DELETE`.
-- Bulk actions over the current multi-select.
+- [x] **Copy/Paste** studies to another storage and files to another study,
+  with progress, ETA and Cancel.
+- [x] **Delete** study / file (confirm dialog; soft delete) and **Restore** via
+  Show 🗑. Cloud PACS: admin-only permanent delete.
+- [x] Bulk actions over the current multi-select.
 
 ### Phase 3 — Authoring (heavier, in-browser)
 - **Image annotation** (line/rect/circle/arrow + notes) on Canvas; save annotated
@@ -196,26 +196,22 @@ Functions confirmed from the Android Archive (`ArchiveFragment.kt`,
 - **Report builder**: pick images, choose layout/paper, render PDF in-browser
   (`jspdf` or `pdf-lib`, vendored) → write `R####.pdf` into the Study folder.
 
-### Phase 4 — Stretch / platform-limited (needs decisions)
-- **Send to PACS (DICOM C-STORE):** not possible from a sandboxed browser with a
-  file API only. Options: drop / "export to a watched NAS folder" handled by an
-  OmniGate-side service / a new OmniGate endpoint. **(Q2.)**
-- **Video trim/stitch:** feasible only via WebCodecs/ffmpeg.wasm (large, slow);
+### Phase 4 — Stretch / platform-limited
+- [x] **Send to PACS:** via OmniGate's `/api/pacs` endpoint (DICOM and Cloud
+  PACS servers). *(Resolves former Q2.)*
+- [x] **DICOM viewing:** OmniGate unwraps the payload; multi-frame plays as cine;
+  Info shows the tag dump. *(Resolves former Q4.)*
+- [ ] **Video trim/stitch:** feasible only via WebCodecs/ffmpeg.wasm (large, slow);
   likely defer. **(Q3.)**
-- **DICOM (`.dcm`) rendering:** needs an in-browser DICOM parser (e.g.
-  `cornerstone`/`dicom-parser`). Currently `.dcm` is listed but shown as "not
-  viewable yet". **(Q4.)**
 
 ---
 
 ## 6. Risks & open questions
 
 - **Q1 — Range requests:** ✅ resolved — `read` streams and honours `Range`.
-- **Q2 — PACS:** Is "Send to PACS" in scope, and via which mechanism (drop / NAS
-  hand-off / new endpoint)?
+- **Q2 — PACS:** ✅ resolved — OmniGate `/api/pacs` endpoint.
 - **Q3 — Video editing:** Is trim/stitch required, or is playback enough?
-- **Q4 — DICOM:** How common are `.dcm` files in target archives? Drives whether a
-  WASM DICOM decoder is worth bundling.
+- **Q4 — DICOM:** ✅ resolved — server-side unwrap, no WASM decoder bundled.
 - **Export status badge:** the Android card shows per-file PACS export status,
   which isn't exposed through the file API — badge deferred unless a marker file
   or endpoint provides it.
@@ -231,10 +227,8 @@ Functions confirmed from the Android Archive (`ArchiveFragment.kt`,
 
 ## 7. Immediate next steps
 
-1. Get **real archive Studies** into an `--allow-dir` root and sanity-check
-   Phase 1 against them (esp. video streaming/seek and DICOM prevalence → Q4).
-2. Start **Phase 2**: Edit Study info (form + dual-write, preserving unknown
-   keys), then Copy, then Delete, then bulk actions.
-3. Decide Q2 (PACS) and Q3 (video editing) scope.
-4. Consider proposing a **server-side video thumbnail** endpoint to OmniGate to
-   replace client-side frame capture.
+1. **Edit Study info**: form + dual-write of `study_info.yaml` and
+   `patient_info.json`, preserving unknown keys, with a read-before-write check.
+   Needs a YAML writer with a round-trip test.
+2. Phase 3: image annotation, then report builder.
+3. Decide Q3 (video editing) scope.

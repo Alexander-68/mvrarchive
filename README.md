@@ -20,6 +20,7 @@ MVRarchive browses imaging studies on OmniGate shares. Users search studies, vie
 
 **Viewer**
 - Fullscreen images, video, PDF and DICOM. Wheel/pinch zooms, drag pans, Enter re-fits.
+- Images: JPEG, PNG, GIF, BMP, WebP, HEIC/HEIF. HEIC/HEIF, which most browsers cannot decode, open as OmniGate's 2048 px ffmpeg rendering. On a gateway without ffmpeg, WebP/HEIC thumbnails answer 415 and the tile keeps the image icon (no retry).
 - Multi-frame DICOM plays as cine: play/pause, frame slider, speed (Auto, 2-30 fps), Arrow Up/Down steps frames.
 - For DICOM files, Info shows the tag dump. Left/Right or swipe moves between files; Space selects the current file.
 - DICOM type comes from the MVR file name or, for unknown names, the payload's Content-Type.
@@ -30,7 +31,7 @@ MVRarchive browses imaging studies on OmniGate shares. Users search studies, vie
 - Delete (Delete key) asks for confirmation; the gateway soft-deletes.
 - Cloud PACS delete (OmniGate admins only): selected studies or selected files are deleted from the store **permanently**. The dialog says so (`Delete permanently`); there is no trash and no Restore. Non-admins see no Delete on Cloud PACS.
 - **Show 🗑** browses deleted content (trashed studies and studies holding deleted files); the selection then offers Restore.
-- Send to PACS: pick a registered DICOM or Cloud PACS server. JPEG, BMP, MP4, PDF and DICOM are sent with the study's patient/study tags; other files are skipped. Byte-weighted progress bar with ETA, per-file errors, Cancel. Cloud PACS sends 3 files at a time with at most one video; DICOM servers get one file at a time.
+- Send to PACS: pick a registered DICOM or Cloud PACS server. JPEG, BMP, WebP/HEIC/HEIF (converted to JPEG by OmniGate, needs ffmpeg there), MP4, PDF and DICOM are sent with the study's patient/study tags; other files are skipped. Byte-weighted progress bar with ETA, per-file errors, Cancel. Cloud PACS sends 3 files at a time with at most one video; DICOM servers get one file at a time.
 
 **Keyboard**: arrows move the focus, Enter goes in, Esc goes out (or clears the search), Space selects, Ctrl+A/C/V, Delete.
 
@@ -68,7 +69,7 @@ Cloud PACS: OmniGate lists Google cloud DICOM stores as read-only storage roots
 each study folder carrying a generated `study_info.yaml`. Cards show
 `Modality` beside the study date. `GET api/pacs` entries with `kind: "cloud"`
 appear in the send dialog as `Name (Cloud PACS)`. When `SeriesNumberBase` is
-set, Send to PACS adds `SeriesNumber` per file: base + 1 (JPEG/BMP), + 2 (MP4),
+set, Send to PACS adds `SeriesNumber` per file: base + 1 (JPEG/BMP/WebP/HEIC/HEIF), + 2 (MP4),
 + 3 (PDF); DICOM files get none. YAML quoted strings unescape backslash, quote and newline escapes in one pass.
 Cloud videos never get a browser-made poster (that would download the whole
 video from Google): OmniGate answers their thumbnails `404`, and the 415/422

@@ -249,7 +249,8 @@
   }
 
   // ---- Send to PACS ----------------------------------------------------------
-  const PACS_EXT = new Set(["jpg", "jpeg", "bmp", "mp4", "pdf", "dcm", "dicom"]);
+  // WebP/HEIC/HEIF: OmniGate converts them to JPEG with ffmpeg (415 without it).
+  const PACS_EXT = new Set(["jpg", "jpeg", "bmp", "webp", "heic", "heif", "mp4", "pdf", "dcm", "dicom"]);
   function pacsSendable(name) { return PACS_EXT.has(path.extname(name)); }
 
   // UUID-style UID (DICOM PS3.5 B.2): "2.25." + 128 bits as decimal. The bits
@@ -366,7 +367,7 @@
   // seriesNumber puts each media kind in its own series above the originals:
   // SeriesNumberBase + {image:1, video:2, pdf:3}. Null when the study has no
   // base (not a cloud study) or the file is DICOM (keeps its own series).
-  const SERIES_OFFSET = { jpg: 1, jpeg: 1, bmp: 1, mp4: 2, pdf: 3 };
+  const SERIES_OFFSET = { jpg: 1, jpeg: 1, bmp: 1, webp: 1, heic: 1, heif: 1, mp4: 2, pdf: 3 };
   function seriesNumber(study, fileName) {
     const base = study && study.info && study.info.SeriesNumberBase;
     const off = SERIES_OFFSET[String(fileName).split(".").pop().toLowerCase()];

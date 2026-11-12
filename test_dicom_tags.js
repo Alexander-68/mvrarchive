@@ -51,7 +51,7 @@ assert.strictEqual(S.mediaKind("VVp.X.1.2.276.0.7230010.903.dcm"), "video", "sto
 assert.strictEqual(S.mediaKind("VVe.2.25.1.dcm"), "video", "storescp Video Endoscopic");
 assert.strictEqual(S.mediaKind("VVm.2.25.1.dcm"), "video", "storescp Video Microscopic");
 assert.strictEqual(S.mediaKind("MRBRAIN.DCM"), "image");
-assert.ok(S.pacsSendable("I0001.jpg") && S.pacsSendable("I0002.dcm") && S.pacsSendable("V0001.mp4") && S.pacsSendable("R0001.pdf") && !S.pacsSendable("V0001.mov"));
+assert.ok(S.pacsSendable("I0001.jpg") && S.pacsSendable("I0002.dcm") && S.pacsSendable("V0001.mp4") && S.pacsSendable("R0001.pdf") && S.pacsSendable("IMG_1.HEIC") && !S.pacsSendable("V0001.mov"));
 console.log("ok");
 
 // Card preview: thumbnail, else first image/video, else page 1 of a PDF.

@@ -59,8 +59,9 @@ const pdf = { kind: "pdf", name: "R0001.pdf" }, img = { kind: "image", name: "I0
 assert.strictEqual(S.cardPreview({ media: [pdf] }), pdf, "PDF-only study previews its report");
 assert.strictEqual(S.cardPreview({ media: [pdf, img] }), img, "image wins over PDF");
 assert.strictEqual(S.cardPreview({ media: [] }), null);
-assert.ok(S.pdfPreviewGone(pdf, 415) && S.pdfPreviewGone(pdf, 404), "no renderer is final");
-assert.ok(!S.pdfPreviewGone(pdf, 503) && !S.pdfPreviewGone(img, 415), "busy or non-PDF keeps retry");
+assert.ok(S.previewGone(pdf, 415) && S.previewGone(pdf, 404), "no renderer is final");
+assert.ok(S.previewGone({ kind: "video" }, 404), "Cloud PACS 404 is final for videos too");
+assert.ok(!S.previewGone(pdf, 503) && !S.previewGone(img, 415), "busy or non-PDF 415 keeps retry");
 assert.ok(S.hasPreview(pdf) && S.hasPreview(img), "media tiles preview PDFs and images");
 assert.ok(!S.hasPreview({ kind: "other" }));
 

@@ -704,7 +704,7 @@
       try { await loadThumbImg(img, file, controller.signal, study); return true; }
       catch (err) {
         img.remove();
-        if (S.pdfPreviewGone(file, err.status)) { addPlaceholder(thumb); return true; }
+        if (S.previewGone(file, err.status)) { addPlaceholder(thumb); return true; }
         if (!controller.signal.aborted) {
           study._thumbError = true;
           previewRetry(thumb, err, () => { study._thumbError = false; enqueueCard(study, 1); });
@@ -1333,8 +1333,8 @@
           tile.insertBefore(img, tile.firstChild);
           ic.remove();
         } catch (err) {
-          // No PDF renderer (415) or none on this share: the PDF icon stays.
-          if (S.pdfPreviewGone(m, err.status)) return;
+          // Final refusal (see previewGone): the type icon stays.
+          if (S.previewGone(m, err.status)) return;
           if (!controller.signal.aborted) {
             m._previewError = true;
             previewRetry(tile, err, () => { m._previewError = false; enqueueMedia(tile._queueItem, 1); });

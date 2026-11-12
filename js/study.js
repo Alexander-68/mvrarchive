@@ -347,11 +347,11 @@
     return file.kind === "image" || file.kind === "video" || file.kind === "pdf";
   }
 
-  // pdfPreviewGone: a PDF preview refusal that is final (no renderer: 415,
-  // none for this share: 404 on Cloud PACS, unreadable: 422) shows the study
-  // icon rather than a retry button.
-  function pdfPreviewGone(file, status) {
-    return file.kind === "pdf" && [404, 415, 422].includes(status);
+  // previewGone: a final preview refusal shows the type icon, not a retry
+  // button. 404 is final for every kind (missing file, or no preview on a
+  // Cloud PACS share); for PDFs so are 415 (no renderer) and 422 (unreadable).
+  function previewGone(file, status) {
+    return status === 404 || (file.kind === "pdf" && [415, 422].includes(status));
   }
 
   // browserPoster: may the browser read a video to grab a poster frame after
@@ -423,6 +423,6 @@
     showDeleted: false,
     isStudyFolder, mediaKind, parseStampName, newStudy, trashedStudy, hydrate,
     displayName, studyDate, fullName, formatDOB, formatDate, fmtSize,
-    matches, FIELD_GROUPS, KNOWN_KEYS, fieldValue, pacsSendable, cardPreview, hasPreview, pdfPreviewGone, dicomTags, seriesNumber, browserPoster,
+    matches, FIELD_GROUPS, KNOWN_KEYS, fieldValue, pacsSendable, cardPreview, hasPreview, previewGone, dicomTags, seriesNumber, browserPoster,
   };
 })();

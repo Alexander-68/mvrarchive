@@ -349,9 +349,11 @@
 
   // previewGone: a final preview refusal shows the type icon, not a retry
   // button. 404 is final for every kind (missing file, or no preview on a
-  // Cloud PACS share); for PDFs so are 415 (no renderer) and 422 (unreadable).
+  // Cloud PACS share); for PDFs so are 415 (no renderer) and 422 (unreadable),
+  // for images 415 (WebP/HEIC on a gateway without ffmpeg).
   function previewGone(file, status) {
-    return status === 404 || (file.kind === "pdf" && [415, 422].includes(status));
+    return status === 404 || (file.kind === "pdf" && [415, 422].includes(status)) ||
+      (file.kind === "image" && status === 415);
   }
 
   // browserPoster: may the browser read a video to grab a poster frame after

@@ -1674,7 +1674,8 @@
       });
       return;
     }
-    if (m.kind === "image") return showImage(m, stage);
+    // Most browsers cannot decode HEIC/HEIF: fall back to OmniGate's ffmpeg preview.
+    if (m.kind === "image") return showImage(m, stage, undefined, /\.(heic|heif)$/i.test(m.name) ? api.thumbURL(m.path, 2048) : undefined);
 
     // Heavy media: stream straight from the read URL (Range-capable), so video
     // seeks natively and PDFs render with their real content-type.

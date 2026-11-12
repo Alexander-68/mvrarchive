@@ -39,6 +39,8 @@ assert.strictEqual(yq("say " + B + '"hi' + B + '"'), 'say "hi"');
 // Cloud PatientID only from PatientID, never the StudyID fallback.
 assert.strictEqual(S.dicomTags({ folderName: "x", info: { CloudPACS: "C", StudyID: "S1" } }).PatientID, undefined);
 assert.strictEqual(S.dicomTags({ folderName: "x", info: { CloudPACS: "C", PatientID: "P9", StudyID: "S1" } }).PatientID, "P9");
+assert.strictEqual(S.dicomTags({ folderName: "x", info: { Notes: "knee scope" } }).StudyDescription, "knee scope", "current-format Notes");
+assert.strictEqual(S.dicomTags({ folderName: "x", info: { Notes: "knee scope" } }).RequestedProcedureDescription, "knee scope");
 assert.strictEqual(S.dicomTags({ folderName: "x", info: { StudyID: "S1" } }).PatientID, "S1");
 
 // PN prefix/suffix: Last^First^Middle^Prefix^Suffix, trailing empties trimmed.

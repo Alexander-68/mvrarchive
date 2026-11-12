@@ -653,7 +653,8 @@
     const card = study.cardEl;
     if (!card) return;
     card.querySelector(".card-title").textContent = S.displayName(study);
-    let mod = study.info && (study.info.ModalitiesInStudy || study.info.Modality || study.info.ScheduledModality);
+    const inf = study.info || {};
+    let mod = inf.Modality || inf.ModalitiesInStudy || inf.ScheduledModality || inf.scheduledModality;
     if (mod === "ENDO") mod = "ES";
     card.querySelector(".card-date").textContent = [S.formatDate(S.studyDate(study)), mod].filter(Boolean).join(" · ");
 
@@ -1927,9 +1928,11 @@
   // Each storage keeps where the user was, like a browser tab: switching away
   // and back restores the Cloud PACS search, search text, open study (focused
   // file, scroll position) and focused card / scroll position. The listing is re-read; studies already
-  // loaded keep their metadata (Refresh re-reads everything).
+  // loaded keep their metadata (Refresh re-reads everything). Selection is
+  // cleared on every switch (the clipboard is kept for paste).
   const storageMemory = new Map(); // share -> snapshot
   async function switchStorage(from, to) {
+    deselectAll();
     if (from) {
       const cur = state.current;
       storageMemory.set(from, {

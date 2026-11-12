@@ -63,3 +63,12 @@ assert.ok(S.pdfPreviewGone(pdf, 415) && S.pdfPreviewGone(pdf, 404), "no renderer
 assert.ok(!S.pdfPreviewGone(pdf, 503) && !S.pdfPreviewGone(img, 415), "busy or non-PDF keeps retry");
 assert.ok(S.hasPreview(pdf) && S.hasPreview(img), "media tiles preview PDFs and images");
 assert.ok(!S.hasPreview({ kind: "other" }));
+
+// Same folder name on two storages, different patients: never one study.
+const uidOf = (info) => S.dicomTags({ folderName: "CASE0001", info }).StudyInstanceUID;
+assert.notStrictEqual(uidOf({ PatientID: "A1" }), uidOf({ PatientID: "B2" }), "folder-name collision across patients");
+assert.strictEqual(uidOf({ PatientID: "A1" }), uidOf({ PatientID: "A1" }), "a copy of the same study keeps its UID");
+assert.match(uidOf({}), /^2\.25\.\d+$/);
+assert.strictEqual(S.mediaKind("SCc.1.2.3.dcm"), "video", "storescp multi-frame true color SC");
+assert.strictEqual(S.mediaKind("SC.1.2.3.dcm"), "image");
+console.log("test_dicom_tags: uid/scc ok");

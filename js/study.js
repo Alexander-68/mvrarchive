@@ -26,9 +26,9 @@
     const ext = path.extname(name);
     if (ext === "dcm" || ext === "dicom") {
       // DICOM can wrap any of them; the MVR naming tells: V0001 / W0001 are
-      // video (also storescp's VVp/VVe/VVm.<uid>.dcm), R0001 a PDF report
+      // video (also storescp's VVp/VVe/VVm/SCc.<uid>.dcm), R0001 a PDF report
       // (also storescp's PDF.<uid>.dcm). Other names (VLp.X.<uid>.dcm) are stills.
-      if (/^([VW]\d|VV[pem]\.)/i.test(name)) return "video";
+      if (/^([VW]\d|VV[pem]\.|SCc\.)/i.test(name)) return "video";
       if (/^(R\d|PDF\.)/i.test(name)) return "pdf";
       return "image";
     }
@@ -253,9 +253,11 @@
   function pacsSendable(name) { return PACS_EXT.has(path.extname(name)); }
 
   // UUID-style UID (DICOM PS3.5 B.2): "2.25." + 128 bits as decimal. The bits
-  // are a hash of the study folder name, so the same study always gets the
-  // same StudyInstanceUID (across sessions and devices) and a resend lands
-  // in the same PACS study as the same instances. Four seeded FNV-1a rounds:
+  // are a hash of the study folder name plus the patient identity sent with
+  // it, so the same study (also a copy on another storage) always gets the
+  // same StudyInstanceUID and a resend lands in the same PACS study as the
+  // same instances, while two patients' studies that happen to share a folder
+  // name (CASE0001 on two storages) never merge. Four seeded FNV-1a rounds:
   // sync, no crypto.subtle (unavailable on plain http).
   function studyUID(folderName) {
     let n = 0n;
@@ -272,9 +274,9 @@
   // does (mvr: dicom/DicomWriter.kt). Only what the metadata says is sent: nothing
   // is derived from the folder name except the study date/time, which falls
   // back to the folder-name timestamp; a study without metadata sends no
-  // patient identity at all. StudyInstanceUID is the metadata's, else one
-  // generated per study and kept for the session so repeated sends land in
-  // the same PACS study.
+  // patient identity at all. StudyInstanceUID is the metadata's, else
+  // studyUID of the folder name and patient identity, stable across sessions
+  // so repeated sends land in the same PACS study.
   function dicomTags(study) {
     const i = study.info || {};
     const t = {};
@@ -327,7 +329,8 @@
     let mod = String(i.Modality || i.ScheduledModality || i.scheduledModality || "").trim().toUpperCase();
     if (mod === "ENDO") mod = "ES";
     if (mod && /^[A-Z0-9]{2,16}$/.test(mod)) t.Modality = mod;
-    t.StudyInstanceUID = i.StudyInstanceUID || studyUID(study.folderName);
+    // Identity only, no dates: a ms StudyDate renders per time zone.
+    t.StudyInstanceUID = i.StudyInstanceUID || studyUID([study.folderName, t.PatientID, t.PatientName, t.PatientBirthDate, t.AccessionNumber].map((v) => v || "").join("\\"));
     return t;
   }
 

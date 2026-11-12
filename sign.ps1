@@ -17,6 +17,7 @@ try {
 $zip = Join-Path $PSScriptRoot 'mvrarchive.zip'
 Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $zip -Force
 $dest = Join-Path $og 'data\apps\mvrarchive'
+if (Test-Path $dest) { Remove-Item $dest -Recurse -Force }  # drop files deleted from the repo
 New-Item -ItemType Directory -Path $dest -Force | Out-Null
 Copy-Item (Join-Path $stage '*') $dest -Recurse -Force
 Write-Host "[sign.ps1] Signed $zip and deployed to $dest"

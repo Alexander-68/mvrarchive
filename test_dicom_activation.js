@@ -40,7 +40,7 @@ vm.runInNewContext(showImageSource, context);
   }
   response = new Response("", { status: 401 });
   assert.equal(await MVR.api.dicomLoadError("x.dcm"), "");
-  assert.equal(location.href, "__login");
+  assert.equal(location.href, "__login?next=");
   networkError = true;
   assert.equal(await MVR.api.dicomLoadError("x.dcm"), "");
 

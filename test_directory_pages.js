@@ -58,7 +58,21 @@ function reset(items) { responses = items; requests.length = 0; waits.length = 0
   assert.equal(requests.length, 1, "permissions failure not retried");
   reset([new Response("", { status: 401 })]);
   await assert.rejects(MVR.api.list("/DATA"), /session expired/);
-  assert.equal(location.href, "__login");
+  assert.equal(location.href, "__login?next=");
+  location.pathname = "/mvrarchive/"; location.search = "?path=/DATA/a b";
+  reset([new Response("", { status: 401 })]);
+  await assert.rejects(MVR.api.list("/DATA"), /session expired/);
+  assert.equal(location.href, "__login?next=" + encodeURIComponent("/mvrarchive/?path=/DATA/a b"), "deep link kept");
+
+  reset([page([{ name: "a" }, { name: "b" }], "p2"), page([{ name: "b" }, { name: "c" }], "")]);
+  assert.equal((await MVR.api.list("/DATA")).map(e => e.name).join(), "a,b,c", "pages de-duplicated");
+
+  const busy = new AbortController();
+  responses = [{ get status() { busy.abort(); return 503; }, headers: new Headers(), body: null }];
+  await assert.rejects(MVR.api.list("/DATA", false, busy.signal), { name: "AbortError" }, "abort during retry wait");
+
+  reset([new Response("busy", { status: 503 }), new Response(JSON.stringify({ frames: ["x", "y"] }))]);
+  assert.equal((await MVR.api.dicomFrames("/DATA/a.dcm")).frames.length, 2, "dicom-frames retries busy server");
 
   reset([]);
   const controller = new AbortController(); controller.abort();

@@ -43,7 +43,8 @@
     if (headers) Object.assign(opts.headers, headers);
     const res = await fetch(url, opts);
     if (res.status === 401) {
-      location.href = "__login";
+      // Same ?next= round-trip the gateway does, so the user lands back on the study.
+      location.href = "__login?next=" + encodeURIComponent((location.pathname || "") + (location.search || ""));
       throw new Error("session expired");
     }
     return res;
@@ -106,7 +107,7 @@
   // The JPEG, MP4 or PDF encapsulated in a .dcm, header skipped server-side
   // (415 for anything else, e.g. uncompressed pixel data).
   function payloadURL(path) { return "api/files/payload" + q(path); }
-  function dicomFrames(path, signal) { return reqJSON("GET", "api/files/dicom-frames" + q(path), undefined, undefined, signal); }
+  function dicomFrames(path, signal) { return getJSONRetry("api/files/dicom-frames" + q(path), signal); }
   // <img> errors hide HTTP response bodies. Probe only after a failed DICOM
   // load; request one byte and cancel successful bodies rather than downloading
   // an entire encapsulated video/image merely to diagnose an error.
@@ -202,42 +203,49 @@
     return visible;
   }
 
+  // GET JSON, retrying 429/503 (Retry-After, 1-6 s, 5 times) with abortable
+  // waits. Safe reads only; never replay writes, copy or PACS send.
+  async function getJSONRetry(url, signal) {
+    for (let attempt = 0; ; attempt++) {
+      signal?.throwIfAborted();
+      const res = await req("GET", url, undefined, undefined, signal);
+      if ((res.status === 429 || res.status === 503) && attempt < 5) {
+        const seconds = Math.min(6, Math.max(1, Number(res.headers.get("Retry-After")) || 1));
+        if (res.body) await res.body.cancel();
+        await retryWait(seconds * 1000, signal);
+        continue;
+      }
+      const data = await res.json().catch(err => { if (res.ok) throw err; return {}; });
+      if (!res.ok) throw new Error(data.error || `${res.status} ${res.statusText}`);
+      return data;
+    }
+  }
+
   // Follow every directory page; archive search and study counts need the full
   // listing. Legacy gateways without next_cursor still return one complete page.
   // With deleted=true return the directory's
   // deleted (trashed) entries instead, each carrying original_name/deleted_at
   // while name is the on-disk trash name to use in paths.
   // filter ({StudyDate, PatientName, ...}) searches a Cloud PACS root; the
-  // result carries .truncated when OmniGate capped it.
+  // result array carries .truncated when OmniGate capped it (read it before
+  // slicing/spreading, which drops the property). Entries are de-duplicated by name.
   async function list(path, deleted, signal, filter) {
-    const entries = [], seen = new Set();
+    const entries = [], seen = new Set(), names = new Set();
     const search = Object.entries(filter || {}).map(([k, v]) => `&${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join("");
     let cursor = "";
     do {
       const url = "api/files" + q(path) + "&limit=256" + (deleted ? "&deleted=1" : "") + search
         + (cursor ? "&cursor=" + encodeURIComponent(cursor) : "");
-      let d;
-      for (let attempt = 0; ; attempt++) {
-        signal?.throwIfAborted();
-        const res = await req("GET", url, undefined, undefined, signal);
-        // Retry safe listing reads only; never replay writes, copy or PACS send.
-        if ((res.status === 429 || res.status === 503) && attempt < 5) {
-          const seconds = Math.min(6, Math.max(1, Number(res.headers.get("Retry-After")) || 1));
-          if (res.body) await res.body.cancel();
-          await new Promise(resolve => setTimeout(resolve, seconds * 1000));
-          continue;
-        }
-        d = await res.json().catch(err => { if (res.ok) throw err; return {}; });
-        if (!res.ok) throw new Error(d.error || `${res.status} ${res.statusText}`);
-        break;
-      }
+      const d = await getJSONRetry(url, signal);
       if (!Array.isArray(d.entries || []) || (d.next_cursor != null && typeof d.next_cursor !== "string")) {
         throw new Error("invalid directory page");
       }
-      entries.push(...(d.entries || []));
+      for (const e of d.entries || []) if (!names.has(e.name)) { names.add(e.name); entries.push(e); }
       if (d.truncated) entries.truncated = true;
       cursor = d.next_cursor || "";
       if (cursor && seen.has(cursor)) throw new Error("directory cursor did not advance");
+      // ponytail: page cap stops a server minting endless fresh cursors (~1M entries).
+      if (cursor && seen.size >= 4096) throw new Error("directory listing too long");
       if (cursor) seen.add(cursor);
     } while (cursor);
     return entries;
@@ -252,8 +260,8 @@
     return res.text();
   }
 
-  // readBlob returns a Blob re-typed by the file's extension, because the server
-  // always sends application/octet-stream and <img>/<video> need a real MIME.
+  // readBlob returns a Blob typed from our own extension table, so <img>/<video>
+  // get a usable MIME even where Go's extension sniffing (ServeContent) lacks one.
   async function readBlob(path, name) {
     const res = await req("GET", "api/files/read" + q(path));
     if (!res.ok) {
@@ -270,8 +278,8 @@
   }
 
   // DICOM tags come from the gateway's DCMTK bridge (dcmdump); jail-marked
-  // "in:" arg keeps the path inside the share. Needs DCMTK on the host and a
-  // local (non-remote) share, else the call answers 503/415.
+  // "in:" arg keeps the path inside the share (network-share inputs are staged
+  // to a temp copy by the gateway). Needs DCMTK on the host, else 503.
   async function dicomDump(path) {
     const d = await reqJSON("POST", "api/dcmtk/dcmdump", JSON.stringify({ args: ["in:" + path], timeoutSec: 60 }), { "Content-Type": "application/json" });
     if (d.exitCode) throw new Error((d.stderr || "").trim() || `dcmdump exited ${d.exitCode}`);

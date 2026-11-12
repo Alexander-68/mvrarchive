@@ -2,9 +2,10 @@
 //
 // The Android app writes study_info.yaml with a custom serializer that produces
 // a predictable, mostly-flat structure: `Key: value` lines, scalar values
-// (strings, ints, null), and a few one-level nested maps (e.g. AnatomicRegion:
-// { display, code }). This parser/dumper covers exactly that shape — it is
-// intentionally small, not a general YAML implementation. patient_info.json is
+// (strings, ints, null), and a few block-style nested maps (e.g. AnatomicRegion:
+// with indented display/code lines). This parser covers exactly that shape — it
+// is intentionally small, not a general YAML implementation: no lists, flow
+// collections, multi-line scalars or quoted keys. patient_info.json is
 // read with JSON.parse as a more robust fallback (see study.js).
 (function () {
   "use strict";
@@ -29,8 +30,8 @@
   }
 
   // parse turns YAML text into a plain object. Indentation-based nesting is
-  // tracked with a stack so nested maps (any depth) round-trip; lists and flow
-  // collections are not used by the schema and are ignored.
+  // tracked with a stack so nested maps (any depth) parse. Lines without a
+  // colon are skipped; the schema uses no lists or flow collections.
   function parse(text) {
     const root = {};
     // stack entries: { indent, obj }
@@ -58,37 +59,15 @@
         parent[key] = parseScalar(rest);
       }
     }
-    // Collapse nested maps that turned out empty to null (empty value case).
-    return root;
-  }
-
-  function needsQuote(s) {
-    return /[:#\n"']/.test(s) || /^\s|\s$/.test(s) || s === "" ||
-      /^(true|false|null|~)$/.test(s) || /^-?\d/.test(s);
-  }
-
-  function dumpValue(v) {
-    if (v === null || v === undefined) return "null";
-    if (typeof v === "number" || typeof v === "boolean") return String(v);
-    const s = String(v);
-    return needsQuote(s) ? '"' + s.replace(/\\/g, "\\\\").replace(/"/g, '\\"') + '"' : s;
-  }
-
-  // dump serializes a plain object back to YAML matching the read shape.
-  function dump(obj, indent) {
-    indent = indent || 0;
-    const pad = "  ".repeat(indent);
-    let out = "";
-    for (const key of Object.keys(obj)) {
-      const v = obj[key];
-      if (v !== null && typeof v === "object" && !Array.isArray(v)) {
-        out += pad + key + ":\n" + dump(v, indent + 1);
-      } else {
-        out += pad + key + ": " + dumpValue(v) + "\n";
+    // A bare `Key:` with no indented children is an empty value, not a map.
+    return (function collapse(o) {
+      for (const k in o) {
+        const v = o[k];
+        if (v && typeof v === "object") o[k] = Object.keys(v).length ? collapse(v) : null;
       }
-    }
-    return out;
+      return o;
+    })(root);
   }
 
-  MVR.yaml = { parse, dump };
+  MVR.yaml = { parse };
 })();

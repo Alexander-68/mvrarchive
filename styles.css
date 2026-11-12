@@ -357,6 +357,7 @@ button.toggle[aria-pressed="true"] { border-color: var(--error); color: var(--er
 .modal-body progress { width: 100%; margin-top: .3rem; accent-color: var(--accent); }
 .modal-body .errors { margin-top: .4rem; color: var(--error); white-space: pre-wrap; }
 .modal-foot { display: flex; justify-content: flex-end; gap: .6rem; padding: .6rem 1rem; border-top: 1px solid var(--line); }
+button.warn { background: #f28c28; color: #1a1000; border-color: transparent; font-weight: 600; }
 button.danger { background: var(--error); color: #fff; border-color: transparent; font-weight: 600; }
 
 /* ---- toast ---------------------------------------------------------------- */

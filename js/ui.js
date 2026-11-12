@@ -802,6 +802,10 @@
     const msg = el("div", "errors");
     body.appendChild(el("div", "muted", "Leave everything empty to show recent studies."));
     body.appendChild(msg);
+    // Dev aid: every dated study (server caps at 5000). OmniGate refuses an unfiltered listing.
+    const all = Object.assign(el("button", "warn", "Show All"), { type: "button", title: "Development aid: list every study (first 5000)" });
+    all.onclick = () => { for (const k in inputs) inputs[k].value = ""; inputs.from.value = "1900-01-01"; run(); };
+    body.appendChild(all);
     const run = () => {
       const form = Object.fromEntries(Object.entries(inputs).map(([k, i]) => [k, i.value]));
       const r = S.cloudFilter(form);

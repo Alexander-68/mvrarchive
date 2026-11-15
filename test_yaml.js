@@ -9,4 +9,8 @@ assert.equal(y.PatientName, "Doe");
 assert.deepEqual({ ...y.AnatomicRegion }, { display: "Knee", code: "T-1" });
 assert.equal(y.Notes, null, "bare key is an empty value, not {}");
 assert.equal(y.Age, 42);
+const p = MVR.yaml.parse("__proto__:\n  polluted: 1\nName: x\n");
+assert.equal(Object.getPrototypeOf(p), Object.getPrototypeOf(y), "__proto__ key keeps the prototype");
+assert.deepEqual(Object.keys(p), ["Name"], "__proto__ children are dropped, not hoisted");
+assert.equal(p.polluted, undefined);
 console.log("YAML subset: passed");

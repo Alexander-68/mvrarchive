@@ -238,8 +238,8 @@ relative to app prefix (use `api/...` in browser URLs). `path` values are
 | Method | Path | Purpose | Notes |
 |--------|------|---------|-------|
 | `GET` | `/api/platform` | Identify the gateway and read its display/session settings | **No session needed.** Returns `{"platform":"omnigate","product","version","theme","zoom","inactivityMinutes"}` |
-| `GET` | `/api/me` | Current authenticated user identity | Returns `{"username","role"}` |
-| `GET` | `/api/roots` | List available shares | Returns `{"roots":[{"name","writable","remote"?,"search"?}]}` (`remote`, `search` only when true); Cloud PACS roots are `writable:false`, `remote:true`, `search:true` (see *Cloud PACS roots*) |
+| `GET` | `/api/me` | Current authenticated user identity | Returns `{"username","role","admin"}`: `role` is always `user` in apps; `admin` is whether the account is an OmniGate admin (gates Cloud PACS delete) |
+| `GET` | `/api/roots` | List available shares | Returns `{"roots":[{"name","writable","remote"?,"search"?,"erase"?}]}` (`remote`, `search`, `erase` only when true); Cloud PACS roots are `writable:false`, `remote:true`, `search:true`, `erase:true` (see *Cloud PACS roots*) |
 | `GET` | `/api/files?path=` | List a directory | Returns `{"path","entries":[{name,is_dir,size,mod_time}],"next_cursor"}`. Default 256 rows; `limit=1..1000`, repeat with `cursor=next_cursor` until empty. Add `&deleted=1` to list that directory's **deleted** entries instead: each also carries `original_name` and `deleted_at`; `name` is the on-disk trash name to use in paths |
 | `GET` | `/api/files/statfs?path=` | Capacity of the volume behind a path | Returns `{"total","free"}` in bytes; `free` is what the server may still write. Works on local and network shares. |
 | `GET` | `/api/files/size?path=&refresh=1` | Recursive visible folder size | Returns `{bytes,files,folders,calculated_at,cached}`. Omit refresh to use 30-second host cache; abort fetch to cancel your request. Last waiter cancellation stops shared scan. Hidden entries, trash and symlinks excluded; errors never return partial totals. |
@@ -247,7 +247,7 @@ relative to app prefix (use `api/...` in browser URLs). `path` values are
 | `GET` | `/api/files/thumbnail?path=&w=` | JPEG thumbnail of an **image, video, PDF or DICOM file** (still, video or PDF) | `w` (default 320, max 2048) applies to plain images; tool-rendered previews are fixed at 640 and answer `415` without their tool. See *Thumbnails* below for the full matrix and fallbacks |
 | `PUT` | `/api/files/write?path=` | Write/create a file | Raw request body is the file content (≤ 32 MiB) |
 | `POST` | `/api/files/mkdir?path=` | Create a folder | Creates missing parents |
-| `DELETE` | `/api/files/delete?path=` | Delete a file or folder | Soft delete: the entry is renamed in place to `.deleted.<ms>.<name>` and vanishes from listings; returns `{"path","deleted":true,"trash_path"}`. Cannot delete a share root; deleting an already-deleted entry is `400` (no permanent delete exists) |
+| `DELETE` | `/api/files/delete?path=` | Delete a file or folder | Soft delete: the entry is renamed in place to `.deleted.<ms>.<name>` and vanishes from listings; returns `{"path","deleted":true,"trash_path"}`. Cannot delete a share root; deleting an already-deleted entry is `400`. Only exception: on an `erase:true` root (Cloud PACS) an admin's delete is permanent and returns `{"path","deleted":true,"permanent":true}` |
 | `POST` | `/api/files/restore?path=` | Restore a deleted entry | `path` is the `trash_path` / `name` from the deleted listing; returns `{"path","restored":true}` with the live path. `409` if the original name is in use again |
 | `POST` | `/api/files/copy?src=&dst=` | Copy a file or folder | Recursive, streams (no size cap), works across shares. `dst` is the new entry's own path; `409` if it exists, `400` if it lies inside `src` |
 | `GET` | `/api/dcmtk` | List available DCMTK tools | `503` when DCMTK is not installed on the gateway host |
@@ -328,9 +328,13 @@ server enforces it regardless; the UI gating is just courtesy).
 ### Cloud PACS roots
 
 An admin can register Google Cloud Healthcare DICOM stores. Each shows up as a
-root `/<name>` with `writable:false`, `remote:true`; `write`, `mkdir`, `copy`
-into it, `delete` and `restore` answer `403` (delete from Cloud PACS is not
-implemented). Layout:
+root `/<name>` with `writable:false`, `remote:true`, `erase:true`; `write`,
+`mkdir`, `copy` into it and `restore` answer `403`. `delete` answers `403` too,
+except for an admin (`/api/me` `admin:true`): then deleting a study folder or an
+instance `.dcm` removes it from the Google store **permanently** (no trash, no
+restore; a study delete can take a while, up to 5 min) and returns
+`permanent:true`. `study_info.yaml` and the root are never deletable. Confirm
+with the user and say it is permanent. Layout:
 
 - Study folders `yyyyMMdd_HHmmss_<PatientID>_<PatientName>_<12hex>`. Sort
   newest-first yourself.
@@ -434,8 +438,8 @@ read-only shares, invisible in listings).
 
 | Source | How the gateway renders it | Size | Needs | Network storage |
 |--------|----------------------------|------|-------|-----------------|
-| Image (`.jpg`, `.png`, `.gif`, …) | In-process (pure Go) | `w` (default 320, max 2048, never upscaled) | nothing | yes |
-| JPEG XL (`.jxl`) | ffmpeg, first frame | 640 wide, never upscaled | ffmpeg with libjxl | yes (staged) |
+| Image (`.jpg`, `.png`, `.gif`, `.bmp`) | In-process (pure Go) | `w` (default 320, max 2048, never upscaled) | nothing | yes |
+| JPEG XL (`.jxl`), WebP (`.webp`), HEIC/HEIF (`.heic`, `.heif`) | ffmpeg, first frame, rotation applied | 640 wide, or 2048 when `w` > 640 (full-screen use: browsers mostly cannot show HEIC); never upscaled | ffmpeg (libjxl for JPEG XL, 7.1+ for tiled HEIC) | yes (staged) |
 | Video (`.mp4`, `.mov`, `.mkv`, …) | ffmpeg, frame ~1 s in | 640 wide | ffmpeg | no → `415` |
 | PDF (`.pdf`) | pdftoppm, page 1 | longer side 640 | pdftoppm (poppler) | yes (staged) |
 | DICOM still, encapsulated JPEG | In-process from the payload | 640 | nothing | yes |
@@ -493,7 +497,8 @@ const out = await res.json(); // {ok:true, exitCode:0, output:"", wrapped:true} 
 ```
 
 - **JPEG and BMP** photos are wrapped into a *VL Photographic Image* DICOM
-  object on the gateway (`wrapped: true`); **`.dcm`/`.dicom`** files go as they
+  object on the gateway (`wrapped: true`); **WebP, HEIC and HEIF** too, after
+  ffmpeg converts them to JPEG (`415` on a gateway without ffmpeg); **`.dcm`/`.dicom`** files go as they
   are, modified on a temporary copy when you pass tags. Other types answer
   `415`. Files on network shares can be sent.
 - **Tags** are keyed by DICOM keyword (`PatientName`) or number

@@ -57,7 +57,6 @@ assert.strictEqual(S.browserPoster({ info: {} }, vid, 415), true);
 assert.strictEqual(S.browserPoster({ info: null }, vid, 422), true);
 assert.strictEqual(S.browserPoster({ info: {} }, vid, 404), false);
 assert.strictEqual(S.browserPoster({ info: {} }, { kind: "image" }, 415), false);
-console.log("ok");
 
 // Cloud PACS search: recent ranges end today, widen 3 -> 7 -> 30 -> 365 days.
 {
@@ -86,3 +85,4 @@ console.log("ok");
   assert.ok(F({ ModalitiesInStudy: "ES" }).error);
   assert.ok(F({ StudyDescription: "colon" }).error);
 }
+console.log("ok");

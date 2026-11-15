@@ -1,3 +1,4 @@
+$ErrorActionPreference = 'Stop'  # a locked file must fail the deploy, not report success
 $destination = Join-Path $PSScriptRoot '..\omnigate\data\apps\mvrarchive'
 # Start clean: files deleted from the repo (and a stale omnigate.sig, which an
 # unsigned deploy would no longer match) must not linger in the app dir.

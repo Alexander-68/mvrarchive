@@ -15,7 +15,7 @@
       <img src="assets/icons/ic_study.svg" class="brand-icon" alt="">
       <div class="brand-text">
         <strong>MVRarchive</strong>
-        <span class="app-version muted">1.0.261112</span>
+        <span class="app-version muted">1.0.261115</span>
       </div>
     </div>
 
@@ -30,7 +30,7 @@
         <button id="search-clear" class="iconbtn" data-tip="Clear search" aria-label="Clear search" hidden>✕</button>
       </div>
       <button id="btn-cloud-search" class="ghost" data-tip="Search Cloud PACS by patient, MRN, date, modality" aria-pressed="false" hidden>Search</button>
-      <button id="btn-refresh" class="iconbtn" data-tip="Refresh">⟳</button>
+      <button id="btn-refresh" class="iconbtn" data-tip="Refresh" aria-label="Refresh">⟳</button>
       <button id="btn-deleted" class="ghost toggle" data-tip="Show deleted files" aria-pressed="false">Show <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg></button>
       <div class="archive-status">
         <span id="study-count" class="muted"></span>
@@ -41,7 +41,7 @@
         <button id="sel-pacs" class="iconbtn" data-tip="Send to PACS" aria-label="Send to PACS" hidden>PACS</button>
         <button id="sel-delete" class="iconbtn" data-tip="Delete selection (Del)" aria-label="Delete selection" hidden><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg></button>
         <button id="sel-clear" class="iconbtn" data-tip="Clear" aria-label="Clear" hidden>✕</button>
-        <div id="toast" class="toast" hidden></div>
+        <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
       </div>
     </div>
 
@@ -88,27 +88,27 @@
         <button id="viewer-select" class="ghost" data-tip="Select (Space)">Select</button>
       </span>
       <span id="viewer-name" class="viewer-name"></span>
-      <button id="viewer-close" class="iconbtn" data-tip="Close">✕</button>
+      <button id="viewer-close" class="iconbtn" data-tip="Close" aria-label="Close">✕</button>
     </div>
-    <button id="viewer-prev" class="viewer-nav prev" data-tip="Previous">‹</button>
+    <button id="viewer-prev" class="viewer-nav prev" data-tip="Previous" aria-label="Previous">‹</button>
     <div id="viewer-stage" class="viewer-stage"></div>
-    <button id="viewer-next" class="viewer-nav next" data-tip="Next">›</button>
+    <button id="viewer-next" class="viewer-nav next" data-tip="Next" aria-label="Next">›</button>
     <div id="viewer-cine" class="viewer-cine" hidden></div>
   </div>
 
-  <dialog id="dicom-dialog" class="dicom-dialog">
+  <dialog id="dicom-dialog" class="dicom-dialog" aria-labelledby="dicom-title">
     <div class="dicom-head">
       <strong id="dicom-title"></strong>
-      <button id="dicom-close" class="iconbtn" data-tip="Close">✕</button>
+      <button id="dicom-close" class="iconbtn" data-tip="Close" aria-label="Close">✕</button>
     </div>
     <pre id="dicom-tags" class="dicom-tags"></pre>
   </dialog>
 
   <!-- Confirm / progress modal shared by Delete and Send to PACS -->
-  <dialog id="modal" class="dicom-dialog modal">
+  <dialog id="modal" class="dicom-dialog modal" aria-labelledby="modal-title">
     <div class="dicom-head">
       <strong id="modal-title"></strong>
-      <button id="modal-close" class="iconbtn" data-tip="Close">✕</button>
+      <button id="modal-close" class="iconbtn" data-tip="Close" aria-label="Close">✕</button>
     </div>
     <div id="modal-body" class="modal-body"></div>
     <div class="modal-foot">

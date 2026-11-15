@@ -345,7 +345,12 @@
 
   function setupThemeBridge() {
     window.addEventListener("message", (e) => {
-      if (!e.data) return;
+      // Only our embedding parent on the same host (OmniGate may serve the
+      // shell and apps on different ports), never share content in the viewer iframe.
+      if (window.parent === window || e.source !== window.parent || !e.data) return;
+      let from;
+      try { from = new URL(e.origin); } catch (_) { return; }
+      if (from.hostname !== location.hostname || from.protocol !== location.protocol) return;
       if (typeof e.data === "string") {
         if (e.data === "light" || e.data === "dark") applyTheme(e.data);
         return;
@@ -484,7 +489,12 @@
 
   // reuse: studies already loaded for this root (storage switch-back), kept by
   // path so their metadata, order and thumbnails come back without re-reading.
+  // loadArchive resolves true only if it is still the latest load when done:
+  // overlapping loads (Refresh twice, storage A -> B -> A) would otherwise
+  // all append their cards to the one grid.
+  let loadGen = 0;
   async function loadArchive(root, reuse) {
+    const gen = ++loadGen, stale = () => gen !== loadGen;
     state.root = root;
     syncDeletedToggle(root);
     const cs = $("#btn-cloud-search");
@@ -493,6 +503,7 @@
     showArchive();
     const grid = $("#grid");
     grid.innerHTML = "";
+    state.studies = []; // with the grid: a pending resortCards must not re-insert the old cards
     applyCardSize();
     $("#grid-empty").hidden = true;
     $("#grid-empty").textContent = "No studies found.";
@@ -505,11 +516,12 @@
     try {
       entries = api.searchable.has(root) ? await cloudList(root) : await api.list(root);
     } catch (e) {
+      if (stale()) return false;
       $("#study-count").textContent = "";
       toast("Could not list storage: " + e.message, true);
-      return;
+      return false;
     }
-    if (state.root !== root) return; // storage changed meanwhile
+    if (stale()) return false;
 
     // Every subfolder is a study card: MVR-named or not, the folder may still
     // hold media or a study_info.yaml.
@@ -518,7 +530,8 @@
     if (state.deleted) {
       try {
         trashed = (await api.list(root, true)).filter((e) => e.is_dir);
-      } catch (e) { toast("Could not list deleted entries: " + e.message, true); }
+      } catch (e) { if (!stale()) toast("Could not list deleted entries: " + e.message, true); }
+      if (stale()) return false;
     }
 
     // When storage has no subfolders (studies), go to file view mode directly!
@@ -533,7 +546,7 @@
       state.focus = 0;
       $("#study-count").textContent = "Direct file view";
       await openStudy(directStudy);
-      return;
+      return !stale();
     }
 
     // Newest study first: folder-name timestamp (or mod time) now, and again
@@ -557,7 +570,7 @@
         }
       };
       await Promise.all(Array.from({ length: 6 }, worker));
-      if (state.root !== root) return; // storage changed meanwhile
+      if (stale()) return false;
       state.studies = live.filter((s) => !s.hydrated || s.media.length)
         .concat(trashed.map((e) => S.trashedStudy(root, e)))
         .sort(byDate);
@@ -588,6 +601,7 @@
     applySearch();
     updateArchiveFocus();
     scanAndScheduleLazyLoads();
+    return true;
   }
 
   // ---- ordering -------------------------------------------------------------
@@ -1956,8 +1970,7 @@
     state.cloudFilter = m.cloudFilter;
     state.query = $("#search").value = m.query;
     state.current = null; // leaving the old storage's study: showArchive must not refocus it
-    await loadArchive(m.root, m.deleted === state.deleted ? m.studies : null);
-    if (state.root !== m.root) return; // switched again meanwhile
+    if (!(await loadArchive(m.root, m.deleted === state.deleted ? m.studies : null))) return; // switched again meanwhile
     const restoreStudy = () => {
       state.mediaFocus = m.mediaFocus || 0;
       updateMediaFocus();
@@ -2109,8 +2122,7 @@
         state.cloudFilter = { StudyDate: day };
         state.cloudForm = { from: `${day.slice(0, 4)}-${day.slice(4, 6)}-${day.slice(6)}`, to: `${day.slice(0, 4)}-${day.slice(4, 6)}-${day.slice(6)}` };
       }
-      await loadArchive(start.archivePath);
-      if (start.studyPath) {
+      if (await loadArchive(start.archivePath) && start.studyPath) {
         const idx = state.studies.findIndex((s) => s.path === start.studyPath);
         if (idx >= 0) {
           setArchiveFocus(idx);

@@ -260,23 +260,6 @@
     return res.text();
   }
 
-  // readBlob returns a Blob typed from our own extension table, so <img>/<video>
-  // get a usable MIME even where Go's extension sniffing (ServeContent) lacks one.
-  async function readBlob(path, name) {
-    const res = await req("GET", "api/files/read" + q(path));
-    if (!res.ok) {
-      const d = await res.json().catch(() => ({}));
-      throw new Error(d.error || `${res.status}`);
-    }
-    const buf = await res.arrayBuffer();
-    return new Blob([buf], { type: mimeFor(name || path) });
-  }
-
-  async function objectURL(path, name) {
-    const blob = await readBlob(path, name);
-    return URL.createObjectURL(blob);
-  }
-
   // DICOM tags come from the gateway's DCMTK bridge (dcmdump); jail-marked
   // "in:" arg keeps the path inside the share (network-share inputs are staged
   // to a temp copy by the gateway). Needs DCMTK on the host, else 503.
@@ -332,5 +315,5 @@
     return d;
   }
 
-  MVR.api = { me, roots, summary, readOnly, searchable, erasable, canDelete, isPermanent, list, readText, readBlob, objectURL, fileURL, thumbURL, thumbnail, payloadURL, mediaURL, dicomDump, dicomFrames, dicomLoadError, dicomPayloadKind, writeText, mkdir, del, restore, copy, pacs, pacsSend, mimeFor };
+  MVR.api = { me, roots, summary, readOnly, searchable, erasable, canDelete, isPermanent, list, readText, fileURL, thumbURL, thumbnail, payloadURL, mediaURL, dicomDump, dicomFrames, dicomLoadError, dicomPayloadKind, writeText, mkdir, del, restore, copy, pacs, pacsSend, mimeFor };
 })();

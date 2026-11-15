@@ -48,6 +48,8 @@
 
       // Pop to the parent whose indent is less than this line's.
       while (stack.length > 1 && indent <= stack[stack.length - 1].indent) stack.pop();
+      // __proto__ would swap the object's prototype: drop it and its children.
+      if (key === "__proto__") { stack.push({ indent, obj: {} }); continue; }
       const parent = stack[stack.length - 1].obj;
 
       if (rest.trim() === "") {

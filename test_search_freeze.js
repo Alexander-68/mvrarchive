@@ -49,7 +49,13 @@ const assert = require('node:assert/strict');
       assert.ok(alive, `page froze after typing "25" (thumbnail requests so far: ${thumbs})`);
       await new Promise(r => setTimeout(r, 300));
     }
+    // Overlapping reloads while thumbnails hydrate: one set of cards, not one per load
+    // (stale loads appended theirs, and resortCards re-inserted the old cards).
+    await page.evaluate(() => { const b = document.querySelector('#btn-refresh'); b.click(); b.click(); b.click(); });
+    await page.waitForFunction(() => document.querySelector('#study-count').textContent !== 'Loading…');
+    await new Promise(r => setTimeout(r, 1500));
+    assert.equal(await page.locator('#grid .card').count(), studies.length, 'overlapping Refresh duplicated cards');
     assert.deepEqual(errors, []);
-    console.log(`PASS: search "25" over ${studies.length} studies keeps the page responsive (${thumbs} thumbnail requests)`);
+    console.log(`PASS: search "25" over ${studies.length} studies keeps the page responsive (${thumbs} thumbnail requests); overlapping refreshes keep one set of cards`);
   } finally { await browser.close(); }
 })().catch(err => { console.error(err); process.exitCode = 1; });

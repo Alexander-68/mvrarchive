@@ -289,7 +289,7 @@ button.toggle[aria-pressed="true"] { border-color: var(--error); color: var(--er
   border-bottom: 1px solid var(--line);
 }
 .viewer-name { color: var(--text); font-size: .9rem; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.viewer-stage { position: relative; flex: 1; display: grid; place-items: center; padding: 0 1rem 1rem; min-height: 0; z-index: 1; }
+.viewer-stage { position: relative; flex: 1; display: grid; place-items: center; padding: 0 1rem 1rem; min-height: 0; z-index: 1; overflow: hidden; /* zoomed media must not cover the top bar */ }
 .viewer-stage img, .viewer-stage video { max-width: 100%; max-height: 100%; object-fit: contain; }
 /* Same absolute centring as images: an in-flow grid item can't resolve
    max-height: 100% against an auto-sized row, so video opened oversized. */

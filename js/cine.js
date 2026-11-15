@@ -17,7 +17,8 @@
         if (controller.signal.aborted) return;
         if (data.frames.length < 2) { bar.hidden = true; return; }
         for (const frame of data.frames) {
-          const bytes = Uint8Array.from(atob(frame), c => c.charCodeAt(0));
+          const bin = atob(frame), bytes = new Uint8Array(bin.length);
+          for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
           urls.push(URL.createObjectURL(new Blob([bytes], { type: "image/jpeg" })));
         }
         bar.innerHTML = '<button type="button" class="ghost">Pause</button>' +
@@ -41,15 +42,15 @@
           const interval = speed.value === "auto" ? autoInterval : Number(speed.value);
           if (playing && !controller.signal.aborted) timer = setTimeout(() => display((index + 1) % urls.length), Math.max(0, interval - decodeMS));
         };
-        async function display(next) {
+        async function display(frame) {
           clearTimeout(timer);
-          requested = next;
+          requested = frame;
           const token = ++revision;
           const started = performance.now();
           try {
-            await showFrame(urls[next]);
+            await showFrame(urls[frame]);
             if (controller.signal.aborted || token !== revision) return;
-            index = next;
+            index = frame;
             slider.value = index + 1;
             counter.textContent = `Frame ${index + 1} / ${urls.length}`;
             schedule(performance.now() - started);

@@ -78,19 +78,9 @@ function collectFiles(baseRel, dir = "") {
 function dosDateTime(date) {
   const d = new Date(date);
   const time = (d.getHours() << 11) | (d.getMinutes() << 5) | (Math.floor(d.getSeconds() / 2));
-  const dt = ((d.getFullYear() - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate();
+  // DOS dates start at 1980; an older mtime (epoch-0 checkouts) would go negative.
+  const dt = (Math.max(0, d.getFullYear() - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate();
   return { time, date: dt };
-}
-
-function crc32(buf) {
-  let crc = ~0;
-  for (let i = 0; i < buf.length; i++) {
-    crc ^= buf[i];
-    for (let j = 0; j < 8; j++) {
-      crc = (crc >>> 1) ^ (crc & 1 ? 0xedb88320 : 0);
-    }
-  }
-  return ~crc >>> 0;
 }
 
 function buildZip() {
@@ -113,7 +103,7 @@ function buildZip() {
     const useDeflate = deflated.length < content.length;
     const data = useDeflate ? deflated : content;
     const method = useDeflate ? 8 : 0; // 8 = Deflate, 0 = Store
-    const fileCrc = crc32(content);
+    const fileCrc = zlib.crc32(content);
     const { time, date } = dosDateTime(file.mtime);
     const nameBuf = Buffer.from(file.zipPath, "utf8");
 

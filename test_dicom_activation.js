@@ -21,8 +21,7 @@ let reason = "", probes = 0, probe;
 const context = {
   state,
   api: { fileURL: p => p, dicomLoadError: async () => { probes++; return probe ? probe() : reason; } },
-  document: { createElement: () => ({}) },
-  decodeImg: async () => { throw Error("image error"); },
+  document: { createElement: () => ({ decode: async () => { throw Error("image error"); } }) },
   clearStage: () => { stage.children = []; },
   el: (_tag, _cls, text) => ({ text, remove() { stage.children = stage.children.filter(n => n !== this); } }),
   applyZoom() {},

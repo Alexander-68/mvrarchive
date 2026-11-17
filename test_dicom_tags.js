@@ -63,8 +63,6 @@ assert.ok(S.previewGone(pdf, 415) && S.previewGone(pdf, 404), "no renderer is fi
 assert.ok(S.previewGone({ kind: "video" }, 404), "Cloud PACS 404 is final for videos too");
 assert.ok(!S.previewGone(pdf, 503) && !S.previewGone(img, 503) && !S.previewGone({ kind: "video" }, 415), "busy, or video 415 (browser poster), keeps retry");
 assert.ok(S.previewGone({ kind: "image", name: "a.heic" }, 415), "image 415 (no ffmpeg for HEIC/WebP) is final");
-assert.ok(S.hasPreview(pdf) && S.hasPreview(img), "media tiles preview PDFs and images");
-assert.ok(!S.hasPreview({ kind: "other" }));
 
 // Same folder name on two storages, different patients: never one study.
 const uidOf = (info) => S.dicomTags({ folderName: "CASE0001", info }).StudyInstanceUID;

@@ -17,8 +17,7 @@
         if (controller.signal.aborted) return;
         if (data.frames.length < 2) { bar.hidden = true; return; }
         for (const frame of data.frames) {
-          const bin = atob(frame), bytes = new Uint8Array(bin.length);
-          for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+          const bytes = Uint8Array.from(atob(frame), (c) => c.charCodeAt(0));
           urls.push(URL.createObjectURL(new Blob([bytes], { type: "image/jpeg" })));
         }
         bar.innerHTML = '<button type="button" class="ghost">Pause</button>' +

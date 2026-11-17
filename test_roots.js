@@ -26,14 +26,6 @@ const rootPage = (roots) => new Response(JSON.stringify({ roots }));
   assert.ok(MVR.api.readOnly.has("/NAS"), "read-only share still reported");
   assert.deepEqual(requests, ["api/roots"]);
 
-  // Legacy gateways may report absolute paths; hide the private store there too.
-  responses = [rootPage([
-    "C:\\store\\priv_data",
-    "C:\\store\\studies",
-    "/priv_data",
-  ])];
-  assert.deepEqual([...await MVR.api.roots()], ["C:\\store\\studies"]);
-
   responses = [rootPage([{ name: "priv_data", writable: true }])];
   assert.deepEqual([...await MVR.api.roots()], [], "only the private store means no browsable roots");
 

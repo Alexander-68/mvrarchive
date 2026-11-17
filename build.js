@@ -1,173 +1,37 @@
-// Zero-dependency cross-platform bundle builder for MVRarchive.
-// Syncs app version (1.0.YYMMDD) and creates mvrarchive.zip with index.html at root.
+// Bundle builder for MVRarchive: syncs the app version (1.0.YYMMDD) and zips
+// the bundle to mvrarchive.zip with index.html at root. Zipping uses pwsh 7's
+// Compress-Archive (forward-slash entry names), so the build needs PowerShell 7.
 
 const fs = require("fs");
 const path = require("path");
-const zlib = require("zlib");
+const { execFileSync } = require("child_process");
 
 const ROOT_DIR = __dirname;
-const OUT_FILE = path.join(ROOT_DIR, "mvrarchive.zip");
+const BUNDLE_PATHS = ["index.html", "omnigate.json", "README.md", "styles.css", "js", "assets"];
 
-const BUNDLE_PATHS = [
-  "index.html",
-  "omnigate.json",
-  "README.md",
-  "styles.css",
-  "js",
-  "assets"
-];
+const d = new Date();
+const pad = (n) => String(n).padStart(2, "0");
+const ver = `1.0.${String(d.getFullYear()).slice(2)}${pad(d.getMonth() + 1)}${pad(d.getDate())}`;
 
-function getVersionString() {
-  const d = new Date();
-  const yy = String(d.getFullYear()).slice(2);
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  return `1.0.${yy}${mm}${dd}`;
+for (const name of ["package.json", "omnigate.json"]) {
+  const file = path.join(ROOT_DIR, name);
+  const json = JSON.parse(fs.readFileSync(file, "utf8"));
+  json.version = ver;
+  fs.writeFileSync(file, JSON.stringify(json, null, 2) + "\n");
 }
+const htmlPath = path.join(ROOT_DIR, "index.html");
+const VERSION_RE = /(<span class="app-version[^>]*>)([^<]*)(<\/span>)/;
+const html = fs.readFileSync(htmlPath, "utf8");
+if (!VERSION_RE.test(html)) { console.error("[build] index.html has no app-version span"); process.exit(1); }
+fs.writeFileSync(htmlPath, html.replace(VERSION_RE, `$1${ver}$3`));
+console.log(`[build] Version: ${ver}`);
 
-function syncVersion() {
-  const ver = getVersionString();
-
-  // 1. Update package.json
-  const pkgPath = path.join(ROOT_DIR, "package.json");
-  if (fs.existsSync(pkgPath)) {
-    try {
-      const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8"));
-      pkg.version = ver;
-      fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + "\n");
-    } catch (e) { /* ignore */ }
-  }
-
-  // 2. Update omnigate.json
-  const manifestPath = path.join(ROOT_DIR, "omnigate.json");
-  const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
-  manifest.version = ver;
-  fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + "\n");
-
-  // 3. Update index.html
-  const htmlPath = path.join(ROOT_DIR, "index.html");
-  if (fs.existsSync(htmlPath)) {
-    let html = fs.readFileSync(htmlPath, "utf8");
-    html = html.replace(/(<span class="app-version[^>]*>)([^<]*)(<\/span>)/, `$1${ver}$3`);
-    fs.writeFileSync(htmlPath, html);
-  }
-
-  console.log(`[build] Version: ${ver}`);
-  return ver;
+try {
+  execFileSync("pwsh", ["-NoProfile", "-Command",
+    `$ErrorActionPreference = 'Stop'; Compress-Archive -Path ${BUNDLE_PATHS.join(",")} -DestinationPath mvrarchive.zip -Force`],
+    { cwd: ROOT_DIR, stdio: "inherit" });
+} catch (e) {
+  console.error(`[build] Zip failed (needs PowerShell 7 'pwsh' on PATH): ${e.message}`);
+  process.exit(1);
 }
-
-function collectFiles(baseRel, dir = "") {
-  const full = path.join(ROOT_DIR, baseRel, dir);
-  const stat = fs.statSync(full);
-  if (!stat.isDirectory()) {
-    return [{
-      zipPath: path.join(baseRel, dir).replace(/\\/g, "/"),
-      absPath: full,
-      mtime: stat.mtime,
-    }];
-  }
-  const entries = fs.readdirSync(full);
-  const results = [];
-  for (const entry of entries) {
-    const sub = dir ? path.join(dir, entry) : entry;
-    results.push(...collectFiles(baseRel, sub));
-  }
-  return results;
-}
-
-function dosDateTime(date) {
-  const d = new Date(date);
-  const time = (d.getHours() << 11) | (d.getMinutes() << 5) | (Math.floor(d.getSeconds() / 2));
-  // DOS dates start at 1980; an older mtime (epoch-0 checkouts) would go negative.
-  const dt = (Math.max(0, d.getFullYear() - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate();
-  return { time, date: dt };
-}
-
-function buildZip() {
-  syncVersion();
-
-  const fileEntries = [];
-  for (const p of BUNDLE_PATHS) {
-    if (fs.existsSync(path.join(ROOT_DIR, p))) {
-      fileEntries.push(...collectFiles(p));
-    }
-  }
-
-  const localHeaders = [];
-  const centralHeaders = [];
-  let offset = 0;
-
-  for (const file of fileEntries) {
-    const content = fs.readFileSync(file.absPath);
-    const deflated = zlib.deflateRawSync(content);
-    const useDeflate = deflated.length < content.length;
-    const data = useDeflate ? deflated : content;
-    const method = useDeflate ? 8 : 0; // 8 = Deflate, 0 = Store
-    const fileCrc = zlib.crc32(content);
-    const { time, date } = dosDateTime(file.mtime);
-    const nameBuf = Buffer.from(file.zipPath, "utf8");
-
-    // Local file header (30 bytes + name)
-    const lh = Buffer.alloc(30 + nameBuf.length);
-    lh.writeUInt32LE(0x04034b50, 0);  // signature
-    lh.writeUInt16LE(20, 4);          // version needed (2.0)
-    lh.writeUInt16LE(0x0800, 6);       // general purpose bit flag (UTF-8)
-    lh.writeUInt16LE(method, 8);      // compression method
-    lh.writeUInt16LE(time, 10);       // last mod time
-    lh.writeUInt16LE(date, 12);       // last mod date
-    lh.writeUInt32LE(fileCrc, 14);     // crc-32
-    lh.writeUInt32LE(data.length, 18); // compressed size
-    lh.writeUInt32LE(content.length, 22); // uncompressed size
-    lh.writeUInt16LE(nameBuf.length, 26); // filename length
-    lh.writeUInt16LE(0, 28);          // extra field length
-    nameBuf.copy(lh, 30);
-
-    localHeaders.push(lh, data);
-
-    // Central directory header (46 bytes + name)
-    const ch = Buffer.alloc(46 + nameBuf.length);
-    ch.writeUInt32LE(0x02014b50, 0);  // signature
-    ch.writeUInt16LE(20, 4);          // version made by
-    ch.writeUInt16LE(20, 6);          // version needed
-    ch.writeUInt16LE(0x0800, 8);       // general purpose bit flag (UTF-8)
-    ch.writeUInt16LE(method, 10);     // compression method
-    ch.writeUInt16LE(time, 12);       // last mod time
-    ch.writeUInt16LE(date, 14);       // last mod date
-    ch.writeUInt32LE(fileCrc, 16);     // crc-32
-    ch.writeUInt32LE(data.length, 20); // compressed size
-    ch.writeUInt32LE(content.length, 24); // uncompressed size
-    ch.writeUInt16LE(nameBuf.length, 28); // filename length
-    ch.writeUInt16LE(0, 30);          // extra field length
-    ch.writeUInt16LE(0, 32);          // file comment length
-    ch.writeUInt16LE(0, 34);          // disk number start
-    ch.writeUInt16LE(0, 36);          // internal file attributes
-    ch.writeUInt32LE(0, 38);          // external file attributes
-    ch.writeUInt32LE(offset, 42);     // relative offset of local header
-    nameBuf.copy(ch, 46);
-
-    centralHeaders.push(ch);
-    offset += lh.length + data.length;
-  }
-
-  const cdOffset = offset;
-  const cdBuf = Buffer.concat(centralHeaders);
-  const cdLength = cdBuf.length;
-
-  // End of central directory record (22 bytes)
-  const eocd = Buffer.alloc(22);
-  eocd.writeUInt32LE(0x06054b50, 0);  // signature
-  eocd.writeUInt16LE(0, 4);           // disk number
-  eocd.writeUInt16LE(0, 6);           // disk with central directory
-  eocd.writeUInt16LE(fileEntries.length, 8);  // total entries on disk
-  eocd.writeUInt16LE(fileEntries.length, 10); // total entries
-  eocd.writeUInt32LE(cdLength, 12);   // size of central directory
-  eocd.writeUInt32LE(cdOffset, 16);   // offset of start of central directory
-  eocd.writeUInt16LE(0, 20);          // zip comment length
-
-  const fullZip = Buffer.concat([...localHeaders, cdBuf, eocd]);
-  fs.writeFileSync(OUT_FILE, fullZip);
-
-  console.log(`[build] Created ${OUT_FILE} (${fullZip.length} bytes, ${fileEntries.length} files)`);
-}
-
-buildZip();
+console.log(`[build] Created ${path.join(ROOT_DIR, "mvrarchive.zip")}`);

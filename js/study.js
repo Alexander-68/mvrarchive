@@ -223,8 +223,6 @@
       ["StudyInstanceUID", "Study UID"],
     ]],
   ];
-  const KNOWN_KEYS = new Set();
-  for (const [, fields] of FIELD_GROUPS) for (const [k] of fields) if (!k.startsWith("__")) KNOWN_KEYS.add(k);
 
   // Resolve a (possibly synthetic) field key to a display string, or "" if absent.
   function fieldValue(info, key) {
@@ -343,11 +341,6 @@
     return study.thumbFile || m.find(f => f.kind === "image" || f.kind === "video") || m.find(f => f.kind === "pdf") || null;
   }
 
-  // hasPreview: media tiles ask OmniGate for a thumbnail (PDFs: page 1).
-  function hasPreview(file) {
-    return file.kind === "image" || file.kind === "video" || file.kind === "pdf";
-  }
-
   // previewGone: a final preview refusal shows the type icon, not a retry
   // button. 404 is final for every kind (missing file, or no preview on a
   // Cloud PACS share); for PDFs so are 415 (no renderer) and 422 (unreadable),
@@ -367,10 +360,12 @@
   // seriesNumber puts each media kind in its own series above the originals:
   // SeriesNumberBase + {image:1, video:2, pdf:3}. Null when the study has no
   // base (not a cloud study) or the file is DICOM (keeps its own series).
-  const SERIES_OFFSET = { jpg: 1, jpeg: 1, bmp: 1, webp: 1, heic: 1, heif: 1, mp4: 2, pdf: 3 };
+  // Only pacsSendable files are sent, so in practice image = JPEG/BMP/WebP/HEIC/HEIF, video = MP4.
+  const SERIES_OFFSET = { image: 1, video: 2, pdf: 3 };
   function seriesNumber(study, fileName) {
     const base = study && study.info && study.info.SeriesNumberBase;
-    const off = SERIES_OFFSET[String(fileName).split(".").pop().toLowerCase()];
+    if (/\.(dcm|dicom)$/i.test(fileName)) return null;
+    const off = SERIES_OFFSET[mediaKind(String(fileName))];
     return Number.isInteger(base) && off ? String(base + off) : null;
   }
 
@@ -426,6 +421,6 @@
     showDeleted: false,
     isStudyFolder, mediaKind, parseStampName, newStudy, trashedStudy, hydrate,
     displayName, studyDate, fullName, formatDOB, formatDate, fmtSize,
-    matches, FIELD_GROUPS, KNOWN_KEYS, fieldValue, pacsSendable, cardPreview, hasPreview, previewGone, dicomTags, seriesNumber, browserPoster,
+    matches, FIELD_GROUPS, fieldValue, pacsSendable, cardPreview, previewGone, dicomTags, seriesNumber, browserPoster,
   };
 })();

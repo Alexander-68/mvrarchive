@@ -10,7 +10,6 @@
 //   GET    /api/files/read?path=       -> raw bytes (streams, honours Range)
 //   GET    /api/files/thumbnail?path=  -> JPEG thumbnail
 //   GET    /api/files/payload?path=    -> JPEG/MP4/PDF wrapped in a DICOM file, served in place (Range OK)
-//   PUT    /api/files/write?path=      -> { path, bytes }
 //   POST   /api/files/mkdir?path=      -> { path, created }
 //   DELETE /api/files/delete?path=     -> { path, deleted, permanent? }  (permanent: admin on Cloud PACS)
 //   POST   /api/files/copy?src=&dst=   -> { src, dst, copied }   (recursive, across shares)
@@ -19,23 +18,6 @@
 (function () {
   "use strict";
   const MVR = (window.MVR = window.MVR || {});
-
-  const MIME = {
-    jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png",
-    gif: "image/gif", webp: "image/webp", bmp: "image/bmp",
-    heif: "image/heif", heic: "image/heic", dcm: "application/dicom", dicom: "application/dicom",
-    mp4: "video/mp4", mov: "video/quicktime", webm: "video/webm",
-    mkv: "video/x-matroska", m4v: "video/mp4", avi: "video/x-msvideo",
-    wmv: "video/x-ms-wmv", flv: "video/x-flv", mpg: "video/mpeg",
-    mpeg: "video/mpeg", ts: "video/mp2t", m2ts: "video/mp2t", mts: "video/mp2t",
-    "3gp": "video/3gpp", ogv: "video/ogg",
-    pdf: "application/pdf",
-    yaml: "text/yaml", yml: "text/yaml", json: "application/json", txt: "text/plain",
-  };
-
-  function mimeFor(name) {
-    return MIME[MVR.path.extname(name)] || "application/octet-stream";
-  }
 
   async function req(method, url, body, headers, signal) {
     const opts = { method, headers: {}, signal };
@@ -108,64 +90,38 @@
   // (415 for anything else, e.g. uncompressed pixel data).
   function payloadURL(path) { return "api/files/payload" + q(path); }
   function dicomFrames(path, signal) { return getJSONRetry("api/files/dicom-frames" + q(path), signal); }
-  // <img> errors hide HTTP response bodies. Probe only after a failed DICOM
-  // load; request one byte and cancel successful bodies rather than downloading
-  // an entire encapsulated video/image merely to diagnose an error.
-  async function dicomLoadError(path) {
+  // probePayload requests one byte of the payload (body cancelled): enough to
+  // read its Content-Type, or the reason for a 403. <img> errors hide HTTP
+  // response bodies, and a full read would download a whole video.
+  async function probePayload(path) {
     try {
       const res = await req("GET", payloadURL(path), undefined, { Range: "bytes=0-0" }, AbortSignal.timeout(5000));
-      if (res.status === 403) {
-        const data = await res.json();
-        return data.error === "DICOM is not activated" ? data.error : "";
-      }
-      if (res.body) await res.body.cancel();
-    } catch (_) { /* retain generic load error for network/other failures */ }
-    return "";
+      if (res.status === 403) return { error: (await res.json().catch(() => ({}))).error };
+      await res.body?.cancel();
+      return { type: res.ok ? (res.headers.get("Content-Type") || "").toLowerCase() : "" };
+    } catch (_) { return {}; } // network/other failures keep the generic message and a still
   }
-  // dicomPayloadKind reads what a .dcm encapsulates from the payload endpoint's
-  // Content-Type (one byte requested, body cancelled): "video" (MP4), "pdf",
-  // else "image" (JPEG, other pixel data, or any failure).
+  // dicomLoadError: the reason a .dcm failed to load, when it is activation.
+  async function dicomLoadError(path) {
+    const { error } = await probePayload(path);
+    return error === "DICOM is not activated" ? error : "";
+  }
+  // dicomPayloadKind: what a .dcm encapsulates, "video" (MP4), "pdf", else "image".
   async function dicomPayloadKind(path) {
-    try {
-      const res = await req("GET", payloadURL(path), undefined, { Range: "bytes=0-0" }, AbortSignal.timeout(5000));
-      if (res.body) await res.body.cancel();
-      if (res.ok) {
-        const type = (res.headers.get("Content-Type") || "").toLowerCase();
-        if (type.startsWith("video/")) return "video";
-        if (type.startsWith("application/pdf")) return "pdf";
-      }
-    } catch (_) { /* keep it a still */ }
-    return "image";
+    const { type = "" } = await probePayload(path);
+    return type.startsWith("video/") ? "video" : type.startsWith("application/pdf") ? "pdf" : "image";
   }
   // The bytes a browser can play: the encapsulated payload for a .dcm, else the file.
   function mediaURL(path) { return /\.(dcm|dicom)$/i.test(path) ? payloadURL(path) : fileURL(path); }
-
-  function isSystemAbsolutePath(path) {
-    return /^[A-Za-z]:[\\/]/.test(path) || /^\\\\/.test(path);
-  }
 
   function sharePath(name) {
     const s = String(name || "").trim().replace(/^\/+|\/+$/g, "");
     return s ? `/${s}` : "";
   }
 
-  function normalizeRoot(root) {
-    if (typeof root === "string") {
-      if (!root) return "";
-      if (root.startsWith("/") || isSystemAbsolutePath(root)) return root;
-      return sharePath(root);
-    }
-    if (!root) return "";
-    if (root.name) return sharePath(root.name);
-    return normalizeRoot(root.path);
-  }
-
   // /priv_data is the hosted app's private store (data/apps_data/<id>), not a
   // share users browse. Keep it out of the storage selector and deep links.
-  function isPrivateRoot(root) {
-    const s = String(root || "").replace(/\\/g, "/").replace(/\/+$/, "");
-    return s.slice(s.lastIndexOf("/") + 1).toLowerCase() === "priv_data";
-  }
+  const isPrivateRoot = (root) => root.toLowerCase() === "/priv_data";
 
   // /api/me reports current authenticated user info
   // admin (from /api/me) lets canDelete allow permanent delete on erase roots.
@@ -177,8 +133,7 @@
   }
 
   // /api/roots returns named shares. The app uses virtual paths of the form
-  // /SHARE/subdir for every API call; older absolute-path gateways are tolerated
-  // so local deployments are not forced to upgrade in lockstep.
+  // /SHARE/subdir for every API call.
   // readOnly collects the shares whose writable flag is false, so the UI can
   // hide Delete/Paste/Restore there (the server enforces 403 regardless).
   // /priv_data is the app's own store and is never surfaced to users.
@@ -193,11 +148,11 @@
     erasable.clear();
     const visible = [];
     for (const r of d.roots || []) {
-      const root = normalizeRoot(r);
+      const root = sharePath(r?.name);
       if (!root || isPrivateRoot(root)) continue;
-      if (r && r.writable === false) readOnly.add(root);
-      if (r && r.search) searchable.add(root);
-      if (r && r.erase) erasable.add(root);
+      if (r.writable === false) readOnly.add(root);
+      if (r.search) searchable.add(root);
+      if (r.erase) erasable.add(root);
       visible.push(root);
     }
     return visible;
@@ -253,11 +208,8 @@
 
   async function readText(path) {
     const res = await req("GET", "api/files/read" + q(path));
-    if (!res.ok) {
-      const d = await res.json().catch(() => ({}));
-      throw new Error(d.error || `${res.status}`);
-    }
-    return res.text();
+    if (res.ok) return res.text();
+    throw new Error((await res.json().catch(() => ({}))).error || `${res.status}`);
   }
 
   // DICOM tags come from the gateway's DCMTK bridge (dcmdump); jail-marked
@@ -272,9 +224,6 @@
   }
 
   // --- mutating endpoints ---
-  async function writeText(path, text) {
-    return reqJSON("PUT", "api/files/write" + q(path), text);
-  }
   async function mkdir(path) {
     return reqJSON("POST", "api/files/mkdir" + q(path));
   }
@@ -308,12 +257,7 @@
   }
 
   // summary: a Cloud PACS root's {studies, first, last} (see S.summaryText).
-  async function summary(root) {
-    const res = await req("GET", "api/files/summary" + q(root));
-    const d = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(d.error || `${res.status}`);
-    return d;
-  }
+  const summary = (root) => reqJSON("GET", "api/files/summary" + q(root));
 
-  MVR.api = { me, roots, summary, readOnly, searchable, erasable, canDelete, isPermanent, list, readText, fileURL, thumbURL, thumbnail, payloadURL, mediaURL, dicomDump, dicomFrames, dicomLoadError, dicomPayloadKind, writeText, mkdir, del, restore, copy, pacs, pacsSend, mimeFor };
+  MVR.api = { me, roots, summary, readOnly, searchable, canDelete, isPermanent, list, readText, fileURL, thumbURL, thumbnail, payloadURL, mediaURL, dicomDump, dicomFrames, dicomLoadError, dicomPayloadKind, mkdir, del, restore, copy, pacs, pacsSend };
 })();

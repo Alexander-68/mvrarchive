@@ -38,8 +38,6 @@
     mediaFocus: 0,       // index into current.media
     cardSize: 300,       // archive card min width (px), Ctrl+wheel/pinch adjustable
     tileSize: 160,       // detail media-tile min width (px), wheel/pinch adjustable
-    cardPinch: null,     // active pinch gesture in archive grid
-    pinch: null,         // active pinch gesture in the media grid
     viewer: { study: null, media: [], index: 0, open: false, img: null,
               scale: 1, tx: 0, ty: 0, drag: null, touch: null, seq: 0 },
   };
@@ -51,8 +49,6 @@
   const MIN_VIEWER_IMAGE_WIDTH = 64;
   const MAX_VIEWER_SCALE = 8;
 
-  const CARD_HYDRATE_CONCURRENCY = 4;
-  const MEDIA_PREVIEW_CONCURRENCY = 4;
   const previewControllers = new Map();
 
   // ---- scroll tracking & multi-tier lazy load scheduler ---------------------
@@ -127,174 +123,91 @@
     return 0;
   }
 
-  // --- Study Cards Lazy Scheduler ---
-  let activeCardWorkers = 0;
-  const cardQueue = []; // array of studies
-  let cardVisibleObserver = null;
-
-  function enqueueCard(study, priority, pump = true) {
-    if (study._thumbError || (study.hydrated && study._thumbLoaded) || study._loading) return;
-    study._priority = Math.min(study._priority || 99, priority);
-    if (!cardQueue.includes(study)) {
-      cardQueue.push(study);
-    }
-    sortCardQueue();
-    if (pump) pumpCardQueue();
+  // makeQueue: lazy loads by priority (1 visible, 2 ahead, 3 behind, 4 search
+  // backfill), `concurrency` at a time; while scrolling only visible items start.
+  // o.skip(item): nothing to load; o.inRange(item): still worth loading at
+  // dispatch; o.run(item) loads; o.again(item): requeue after an unfinished
+  // run; o.refill() tops up an empty queue. Observed elements carry ._item.
+  function makeQueue(o) {
+    const items = [];
+    let active = 0;
+    const q = {
+      items,
+      enqueue(item, priority, pump = true) {
+        if (o.skip(item)) return;
+        if (items.includes(item)) item._priority = Math.min(item._priority, priority);
+        else { item._priority = priority; items.push(item); }
+        if (pump) q.pump();
+      },
+      pump() {
+        if (!items.length) o.refill?.();
+        while (active < o.concurrency && items.length) {
+          items.sort((a, b) => a._priority - b._priority);
+          if (isScrolling && items[0]._priority > 1) break; // ahead/behind wait for scrolling to settle
+          const item = items.shift();
+          // Re-check at dispatch time: the user may have scrolled past it while queued.
+          if (o.skip(item) || !o.inRange(item)) continue;
+          active++;
+          o.run(item).finally(() => {
+            active--;
+            if (o.again(item)) q.enqueue(item, 1, false);
+            q.pump();
+          });
+        }
+      },
+      observer: new IntersectionObserver((entries) => {
+        for (const e of entries) if (e.isIntersecting) q.enqueue(e.target._item, 1);
+      }, { threshold: 0.01 }),
+    };
+    return q;
   }
 
-  function sortCardQueue() {
-    cardQueue.sort((a, b) => (a._priority || 99) - (b._priority || 99));
-  }
-
-  function pumpCardQueue() {
+  // --- Study cards ---
+  const cards = makeQueue({
+    concurrency: 4,
+    skip: (s) => s._thumbError || (s.hydrated && s._thumbLoaded) || s._loading,
+    inRange: (s) => state.query || getElementZone(s.cardEl),
     // While a search is active, hidden unhydrated cards never enter the viewport,
     // so their metadata would never load and matches would stay missing:
     // keep hydrating every remaining study in the background (lowest priority).
     // Not on Cloud PACS: that would fetch every study; Search asks the store instead.
-    if (!cardQueue.length && state.query && !api.searchable.has(state.root)) {
-      for (const s of state.studies) {
-        if (!s.hydrated && !s._loading && !s._thumbError && s.cardEl) enqueueCard(s, 4, false);
-      }
-    }
-    if (!cardQueue.length) return;
-
-    // If currently scrolling fast, only process priority 1 (visible) items
-    while (activeCardWorkers < CARD_HYDRATE_CONCURRENCY && cardQueue.length > 0) {
-      sortCardQueue();
-      const topStudy = cardQueue[0];
-      if (!topStudy) break;
-
-      if (isScrolling && topStudy._priority > 1) {
-        // Wait for scrolling to settle before processing ahead/behind preloads
-        break;
-      }
-
-      cardQueue.shift();
-      if ((topStudy.hydrated && (topStudy._thumbLoaded || topStudy._thumbError)) || topStudy._loading) continue;
-      // Re-check at dispatch time: the user may have scrolled past it while queued.
-      if (!state.query && !getElementZone(topStudy.cardEl)) continue;
-
-      topStudy._loading = true;
-      activeCardWorkers++;
-
-      (async () => {
-        try {
-          if (!topStudy.hydrated) await S.hydrate(topStudy);
-          await fillCard(topStudy);
-          if (state.query) applySearch();
-          scheduleResort();
-        } catch (e) {
-          topStudy._thumbError = true;
-          const thumb = topStudy.cardEl?.querySelector(".card-thumb");
-          if (thumb) {
-            thumb.classList.remove("loading");
-            previewRetry(thumb, e, () => { topStudy._thumbError = false; enqueueCard(topStudy, 1); });
-          }
-        } finally {
-          topStudy._loading = false;
-          activeCardWorkers--;
-          if (state.view === "archive" && !topStudy._thumbLoaded && !topStudy._thumbError && getElementZone(topStudy.cardEl) === 1) enqueueCard(topStudy, 1, false);
-          pumpCardQueue();
+    refill() {
+      if (!state.query || api.searchable.has(state.root)) return;
+      for (const s of state.studies) if (!s.hydrated && s.cardEl) cards.enqueue(s, 4, false);
+    },
+    async run(s) {
+      s._loading = true;
+      try {
+        if (!s.hydrated) await S.hydrate(s);
+        await fillCard(s);
+        if (state.query) applySearch();
+        scheduleResort();
+      } catch (e) {
+        s._thumbError = true;
+        const thumb = s.cardEl?.querySelector(".card-thumb");
+        if (thumb) {
+          thumb.classList.remove("loading");
+          previewRetry(thumb, e, () => { s._thumbError = false; cards.enqueue(s, 1); });
         }
-      })();
-    }
-  }
+      } finally { s._loading = false; }
+    },
+    again: (s) => state.view === "archive" && !s._thumbLoaded && !s._thumbError && getElementZone(s.cardEl) === 1,
+  });
 
-  function setupCardObservers() {
-    if (cardVisibleObserver) cardVisibleObserver.disconnect();
-    if (!window.IntersectionObserver) return;
-
-    // Visible-on-screen observer (0px rootMargin)
-    cardVisibleObserver = new IntersectionObserver((entries) => {
-      for (const entry of entries) {
-        if (entry.isIntersecting) {
-          const study = entry.target._study;
-          if (study && !(study.hydrated && study._thumbLoaded)) {
-            study._priority = 1;
-            enqueueCard(study, 1);
-          }
-        }
-      }
-    }, {
-      rootMargin: "0px",
-      threshold: 0.01,
-    });
-  }
-
-  // --- Media Preview Tiles Lazy Scheduler ---
-  let activeMediaWorkers = 0;
-  const mediaQueue = []; // array of media items { media, loadFn, priority }
-  let mediaVisibleObserver = null;
-
-  function enqueueMedia(item, priority, pump = true) {
-    if (item.media._previewLoaded || item.media._previewLoading || item.media._previewError) return;
-    item.priority = Math.min(item.priority || 99, priority);
-    if (!mediaQueue.includes(item)) {
-      mediaQueue.push(item);
-    }
-    sortMediaQueue();
-    if (pump) pumpMediaQueue();
-  }
-
-  function sortMediaQueue() {
-    mediaQueue.sort((a, b) => (a.priority || 99) - (b.priority || 99));
-  }
-
-  function pumpMediaQueue() {
-    if (!mediaQueue.length) return;
-
-    while (activeMediaWorkers < MEDIA_PREVIEW_CONCURRENCY && mediaQueue.length > 0) {
-      sortMediaQueue();
-      const topItem = mediaQueue[0];
-      if (!topItem) break;
-
-      if (isScrolling && topItem.priority > 1) {
-        break;
-      }
-
-      mediaQueue.shift();
-      if (topItem.media._previewLoaded || topItem.media._previewLoading) continue;
-      // Re-check at dispatch time: the user may have scrolled past it while queued.
-      if (!getElementZone(topItem.media.tileEl)) continue;
-
-      topItem.media._previewLoading = true;
-      activeMediaWorkers++;
-
-      (async () => {
-        try {
-          await topItem.loadFn();
-          if (topItem.media.tileEl === topItem.tile) topItem.media._previewLoaded = true;
-        } catch (e) {
-          /* ignore */
-        } finally {
-          if (topItem.media.tileEl === topItem.tile) topItem.media._previewLoading = false;
-          activeMediaWorkers--;
-          if (topItem.media.tileEl === topItem.tile && !topItem.media._previewLoaded && !topItem.media._previewError && getElementZone(topItem.media.tileEl) === 1) enqueueMedia(topItem, 1, false);
-          pumpMediaQueue();
-        }
-      })();
-    }
-  }
-
-  function setupMediaObservers() {
-    if (mediaVisibleObserver) mediaVisibleObserver.disconnect();
-    if (!window.IntersectionObserver) return;
-
-    mediaVisibleObserver = new IntersectionObserver((entries) => {
-      for (const entry of entries) {
-        if (entry.isIntersecting) {
-          const tile = entry.target;
-          if (tile._queueItem && !tile._queueItem.media._previewLoaded) {
-            tile._queueItem.priority = 1;
-            enqueueMedia(tile._queueItem, 1);
-          }
-        }
-      }
-    }, {
-      rootMargin: "0px",
-      threshold: 0.01,
-    });
-  }
+  // --- Media preview tiles (m._load is set by renderMedia) ---
+  const tiles = makeQueue({
+    concurrency: 4,
+    skip: (m) => m._previewLoaded || m._previewLoading || m._previewError,
+    inRange: (m) => getElementZone(m.tileEl),
+    async run(m) {
+      const tile = m.tileEl; // a re-render replaces the tile and resets these flags
+      m._previewLoading = true;
+      try { await m._load(); if (m.tileEl === tile) m._previewLoaded = true; }
+      catch (_) { /* the tile shows Retry */ }
+      finally { if (m.tileEl === tile) m._previewLoading = false; }
+    },
+    again: (m) => !m._previewLoaded && !m._previewError && getElementZone(m.tileEl) === 1,
+  });
 
   // Scan all items in the active view to assign Priority 1 (visible),
   // Priority 2 (1.5x ahead), and Priority 3 (1.5x behind)
@@ -304,99 +217,30 @@
     }
     if (state.view === "archive") {
       // Drop stale preloads, then queue current viewport before nearby cards.
-      cardQueue.length = 0;
-      const vis = visibleStudies();
-      for (const study of vis) {
-        if ((study.hydrated && (study._thumbLoaded || study._thumbError)) || study._loading || !study.cardEl) continue;
-        const zone = getElementZone(study.cardEl);
-        if (zone > 0) {
-          study._priority = zone;
-          enqueueCard(study, zone, false);
-        }
+      cards.items.length = 0;
+      for (const s of visibleStudies()) {
+        const zone = s.cardEl && getElementZone(s.cardEl);
+        if (zone) cards.enqueue(s, zone, false);
       }
-      pumpCardQueue();
+      cards.pump();
     } else if (state.view === "study" && state.current) {
       // Drop stale preloads, then queue current viewport before nearby tiles.
-      mediaQueue.length = 0;
+      tiles.items.length = 0;
       for (const m of state.current.media) {
-        if (m._previewLoaded || m._previewLoading || m._previewError || !m.tileEl) continue;
-        const zone = getElementZone(m.tileEl);
-        if (zone > 0 && m.tileEl._queueItem) {
-          m.tileEl._queueItem.priority = zone;
-          enqueueMedia(m.tileEl._queueItem, zone, false);
-        }
+        const zone = m.tileEl && getElementZone(m.tileEl);
+        if (zone) tiles.enqueue(m, zone, false);
       }
-      pumpMediaQueue();
+      tiles.pump();
     }
-  }
-
-  // ---- theme & omnigate bridge ----------------------------------------------
-  function applyTheme(theme) {
-    if (theme === "light" || theme === "dark") {
-      document.documentElement.dataset.theme = theme;
-    }
-  }
-
-  function applyZoom(zoom) {
-    if (zoom) {
-      document.documentElement.style.zoom = zoom + "%";
-    }
-  }
-
-  function setupThemeBridge() {
-    window.addEventListener("message", (e) => {
-      // Only our embedding parent on the same host (OmniGate may serve the
-      // shell and apps on different ports), never share content in the viewer iframe.
-      if (window.parent === window || e.source !== window.parent || !e.data) return;
-      let from;
-      try { from = new URL(e.origin); } catch (_) { return; }
-      if (from.hostname !== location.hostname || from.protocol !== location.protocol) return;
-      if (typeof e.data === "string") {
-        if (e.data === "light" || e.data === "dark") applyTheme(e.data);
-        return;
-      }
-      if (typeof e.data === "object") {
-        const t = e.data.theme || (e.data.type === "theme" && e.data.value);
-        if (t === "light" || t === "dark") applyTheme(t);
-        if (e.data.zoom) applyZoom(e.data.zoom);
-        const u = e.data.user || e.data.username;
-        if (u) {
-          const elName = $("#user-name");
-          if (elName) elName.textContent = typeof u === "string" ? u : u.username;
-        }
-      }
-    });
   }
 
   async function initUser() {
-    try {
-      const u = await api.me();
-      const username = u && (u.username || u.name);
-      if (username) {
-        const elName = $("#user-name");
-        if (elName) {
-          elName.textContent = username;
-          elName.title = u.role ? `Signed in as ${username} (${u.role})` : `Signed in as ${username}`;
-        }
-        return;
-      }
-    } catch (e) { /* fall through to URL params / storage */ }
-
-    const urlUser = new URLSearchParams(location.search).get("user") ||
-                    new URLSearchParams(location.search).get("username");
-    if (urlUser) {
-      const elName = $("#user-name");
-      if (elName) elName.textContent = urlUser;
-      return;
-    }
-
-    try {
-      const stored = sessionStorage.getItem("username") || localStorage.getItem("username");
-      if (stored) {
-        const elName = $("#user-name");
-        if (elName) elName.textContent = stored;
-      }
-    } catch (e) { /* ignore */ }
+    const u = await api.me();
+    const username = u.username || u.name;
+    if (!username) return;
+    const n = $("#user-name");
+    n.textContent = username;
+    n.title = u.role ? `Signed in as ${username} (${u.role})` : `Signed in as ${username}`;
   }
 
   // ---- small DOM helpers ----------------------------------------------------
@@ -510,7 +354,7 @@
     $("#study-count").textContent = "Loading…";
     refreshStatusRight();
 
-    cardQueue.length = 0;
+    cards.items.length = 0;
 
     let entries;
     try {
@@ -563,13 +407,11 @@
       // so cards do not appear and then vanish while scrolling.
       const live = state.studies;
       let next = 0;
-      const worker = async () => {
+      await pool(6, async () => {
         while (next < live.length) {
-          const s = live[next++];
-          try { await S.hydrate(s); } catch (e) { /* card stays, hydrates lazily */ }
+          try { await S.hydrate(live[next++]); } catch (e) { /* card stays, hydrates lazily */ }
         }
-      };
-      await Promise.all(Array.from({ length: 6 }, worker));
+      });
       if (stale()) return false;
       state.studies = live.filter((s) => !s.hydrated || s.media.length)
         .concat(trashed.map((e) => S.trashedStudy(root, e)))
@@ -582,20 +424,14 @@
     const total = state.studies.length;
     $("#study-count").textContent = `${total} stud${total === 1 ? "y" : "ies"}` + scopeNote();
 
-    setupCardObservers();
-
+    cards.observer.disconnect();
     for (const study of state.studies) {
       study.cardEl = buildCard(study);
-      study.cardEl._study = study;
+      study.cardEl._item = study;
       study.cardEl.classList.toggle("trashed", study.trashed);
       if (study.hydrated) fillCard(study);
       grid.appendChild(study.cardEl);
-
-      if (cardVisibleObserver) {
-        cardVisibleObserver.observe(study.cardEl);
-      } else {
-        enqueueCard(study, 1);
-      }
+      cards.observer.observe(study.cardEl);
     }
 
     applySearch();
@@ -650,16 +486,9 @@
     return card;
   }
 
-  function metaItem(iconName, value) {
-    const s = el("span", "mi");
-    s.appendChild(icon(iconName));
-    s.appendChild(el("span", null, String(value)));
-    return s;
-  }
-  function subItem(iconName, value) {
-    const s = el("span", "si");
-    s.appendChild(icon(iconName));
-    s.appendChild(el("span", null, String(value)));
+  function iconItem(cls, iconName, value) {
+    const s = el("span", cls);
+    s.append(icon(iconName), el("span", null, String(value)));
     return s;
   }
 
@@ -675,18 +504,18 @@
     const c = study.counters;
     const meta = card.querySelector(".card-meta");
     meta.innerHTML = "";
-    meta.appendChild(metaItem("ic_image", c.images));
-    meta.appendChild(metaItem("ic_video", c.videos));
-    if (c.pdfs) meta.appendChild(metaItem("ic_pdf", c.pdfs));
+    meta.appendChild(iconItem("mi", "ic_image", c.images));
+    meta.appendChild(iconItem("mi", "ic_video", c.videos));
+    if (c.pdfs) meta.appendChild(iconItem("mi", "ic_pdf", c.pdfs));
     if (c.size) meta.appendChild(el("span", "mi", S.fmtSize(c.size)));
 
     const sub = card.querySelector(".card-sub");
     sub.innerHTML = "";
     const i = study.info || {};
     const sid = i.StudyID || (S.parseStampName(study.folderName) || {}).studyId;
-    if (sid) sub.appendChild(subItem("ic_id", sid));
+    if (sid) sub.appendChild(iconItem("si", "ic_id", sid));
     const dob = S.formatDOB(i);
-    if (dob) sub.appendChild(subItem("ic_birthday", dob));
+    if (dob) sub.appendChild(iconItem("si", "ic_birthday", dob));
     if (state.deleted && study.deletedAt) sub.appendChild(el("span", "si deleted-at", "Deleted " + S.formatDate(new Date(study.deletedAt))));
 
     return fillCardThumb(study);
@@ -721,7 +550,7 @@
         if (S.previewGone(file, err.status)) { addPlaceholder(thumb); return true; }
         if (!controller.signal.aborted) {
           study._thumbError = true;
-          previewRetry(thumb, err, () => { study._thumbError = false; enqueueCard(study, 1); });
+          previewRetry(thumb, err, () => { study._thumbError = false; cards.enqueue(study, 1); });
         }
         return false;
       }
@@ -857,7 +686,7 @@
       $("#study-count").textContent = `${state.studies.length} stud${state.studies.length === 1 ? "y" : "ies"}` + scopeNote();
     }
     refreshStatusRight();
-    if (q) pumpCardQueue();
+    if (q) cards.pump();
     if (state.view === "archive") {
       updateArchiveFocus();
       scanAndScheduleLazyLoads();
@@ -956,11 +785,8 @@
     body.appendChild(el("div", null, `${plural(items.length, clip.kind === "study" ? "study" : "file", clip.kind === "study" ? "studies" : "files")} into ${dest}`));
     body.appendChild(firstNames(items));
     openModal("Paste", body, "Paste", "primary", async (run) => {
-      const prog = el("div", "progress", "Listing..."); body.appendChild(prog);
-      const bar = el("progress"); bar.max = 1; bar.value = 0; body.appendChild(bar);
-      const errBox = el("div", "errors"); body.appendChild(errBox);
-      const errors = [];
-      const fail = (name, e) => { errors.push(`${name}: ${e.message}`); errBox.textContent = errors.join("\n"); };
+      const p = progress(body);
+      p.line.textContent = "Listing...";
       // Expand studies into folders + files so progress is per file, not per
       // study (a whole-study server copy is one silent request). Existing
       // targets are refused, as the server copy would (409).
@@ -977,38 +803,21 @@
       for (const it of items) {
         if (run.cancel) break;
         const dst = MVR.path.join(dest, it.name);
-        if (taken.has(it.name.toLowerCase())) { fail(it.name, new Error("already exists")); continue; }
+        if (taken.has(it.name.toLowerCase())) { p.fail(it.name, new Error("already exists")); continue; }
         if (clip.kind === "file") { files.push({ src: it.path, dst, name: it.name, size: it.size }); continue; }
-        prog.textContent = `Listing ${it.name}...`;
-        try { await walk(it.path, dst); } catch (e) { fail(it.name, e); }
+        p.line.textContent = `Listing ${it.name}...`;
+        try { await walk(it.path, dst); } catch (e) { p.fail(it.name, e); }
       }
-      for (const d of dirs) { if (run.cancel) break; try { await api.mkdir(d); } catch (e) { fail(d, e); } }
+      for (const d of dirs) { if (run.cancel) break; try { await api.mkdir(d); } catch (e) { p.fail(d, e); } }
       // Byte-weighted when every size is known (cloud .dcm may report none), else per file.
-      const weight = files.every((f) => f.size > 0) ? (f) => f.size : () => 1;
-      const total = files.reduce((n, f) => n + weight(f), 0) || 1;
-      const t0 = Date.now(); let done = 0, ok = 0; const active = [];
-      const show = () => {
-        const secs = (Date.now() - t0) / 1000;
-        let txt = `Copying ${active.join(", ")}... (${Math.min(ok + errors.length + active.length, files.length)}/${files.length})`;
-        if (secs > 5) txt += done ? ` - about ${fmtDur(secs * (total - done) / done)} left` : ` - ${fmtDur(secs)} elapsed`;
-        prog.textContent = txt;
-        bar.value = done / total;
-      };
-      const tick = setInterval(show, 1000);
       // Cloud PACS reads are latency-bound: 3 copies in flight from a searchable root.
-      const queue = files.slice();
-      const worker = async () => {
-        while (!run.cancel && queue.length) {
-          const f = queue.shift();
-          active.push(f.name); show();
-          try { await api.copy(f.src, f.dst); ok++; } catch (e) { fail(f.name, e); }
-          active.splice(active.indexOf(f.name), 1); done += weight(f);
-        }
-      };
-      const fromCloud = items.some((it) => api.searchable.has(it.study.root));
-      await Promise.all(Array.from({ length: fromCloud ? 3 : 1 }, worker));
-      clearInterval(tick); bar.value = done / total;
-      prog.textContent = run.cancel ? `Cancelled after ${plural(ok, "file")} copied` : `Copied ${ok} of ${plural(files.length, "file")}` + (errors.length ? `, ${errors.length} failed` : "");
+      await p.run(files, run, {
+        verb: "Copying", etaAfter: 5,
+        workers: items.some((it) => api.searchable.has(it.study.root)) ? 3 : 1,
+        weight: files.every((f) => f.size > 0) ? (f) => f.size : () => 1,
+        each: (f) => api.copy(f.src, f.dst),
+      });
+      p.line.textContent = run.cancel ? `Cancelled after ${plural(p.ok, "file")} copied` : `Copied ${p.ok} of ${plural(files.length, "file")}` + (p.errors.length ? `, ${p.errors.length} failed` : "");
       run.finish();
       if (clip.kind === "study") loadArchive(state.root);
       else if (state.current) { state.current.hydrated = false; openStudy(state.current); }
@@ -1040,6 +849,48 @@
   }
   const fmtDur = (s) => { s = Math.round(s); return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${s % 60}s`; };
   const plural = (n, one, many) => `${n} ${n === 1 ? one : (many || one + "s")}`;
+  const pool = (n, worker) => Promise.all(Array.from({ length: n }, (_, w) => worker(w)));
+
+  // progress appends a status line, a bar and an error box to a modal body.
+  // p.run(files, run, opts) does opts.each(file) for every file, opts.workers
+  // at a time (opts.pick(w, queue) chooses worker w's next index), until the
+  // run token is cancelled, showing the files in flight, a weighted bar and,
+  // after opts.etaAfter seconds, an ETA.
+  function progress(body) {
+    const line = el("div", "progress"), bar = el("progress"), errBox = el("div", "errors");
+    bar.max = 1; bar.value = 0;
+    body.append(line, bar, errBox);
+    const p = {
+      line, ok: 0, errors: [],
+      fail(name, e) { p.errors.push(`${name}: ${e.message}`); errBox.textContent = p.errors.join("\n"); },
+      async run(files, run, { verb, workers, weight, etaAfter, each, pick = () => 0 }) {
+        const total = files.reduce((n, f) => n + weight(f), 0) || 1;
+        const t0 = Date.now(), active = [], queue = files.slice();
+        let done = 0;
+        const show = () => {
+          const secs = (Date.now() - t0) / 1000;
+          let txt = `${verb} ${active.join(", ")}... (${Math.min(p.ok + p.errors.length + active.length, files.length)}/${files.length})`;
+          // ponytail: ETA from finished files only (each file is one request, no byte progress); until one finishes, show elapsed.
+          if (secs > etaAfter) txt += done ? ` - about ${fmtDur(secs * (total - done) / done)} left` : ` - ${fmtDur(secs)} elapsed`;
+          line.textContent = txt;
+          bar.value = done / total;
+        };
+        const tick = setInterval(show, 1000);
+        await pool(workers, async (w) => {
+          while (!run.cancel && queue.length) {
+            const i = pick(w, queue);
+            if (i < 0) return;
+            const [f] = queue.splice(i, 1);
+            active.push(f.name); show();
+            try { await each(f); p.ok++; } catch (e) { p.fail(f.name, e); }
+            active.splice(active.indexOf(f.name), 1); done += weight(f);
+          }
+        });
+        clearInterval(tick); bar.value = done / total;
+      },
+    };
+    return p;
+  }
 
   async function hydrateAll(items) {
     await Promise.all(items.map((it) => it.study.hydrated ? null : S.hydrate(it.study).then(() => fillCard(it.study))));
@@ -1144,48 +995,24 @@
     body.appendChild(firstNames(files));
     openModal("Send to PACS", body, "Send", "primary", async (run) => {
       sel.disabled = true;
-      const prog = el("div", "progress"); body.appendChild(prog);
-      const bar = el("progress"); bar.max = 1; bar.value = 0; body.appendChild(bar);
-      const errBox = el("div", "errors"); body.appendChild(errBox);
-      let ok = 0; const errors = [];
-      // Byte-weighted bar (sizes from the listing; 1 per file if unknown).
-      const weight = (f) => f.size || 1;
-      const total = files.reduce((n, f) => n + weight(f), 0);
-      const t0 = Date.now(); let done = 0; const active = [];
-      const show = () => {
-        const secs = (Date.now() - t0) / 1000;
-        let txt = `Sending ${active.join(", ")}... (${Math.min(ok + errors.length + active.length, files.length)}/${files.length})`;
-        // ponytail: ETA from finished files only (each send is one POST, no byte progress); until one finishes, show elapsed.
-        if (secs > 10) txt += done ? ` - about ${fmtDur(secs * (total - done) / done)} left` : ` - ${fmtDur(secs)} elapsed`;
-        prog.textContent = txt;
-        bar.value = done / total;
-      };
-      const tick = setInterval(show, 1000);
+      const p = progress(body);
       // Cloud (STOW-RS) is latency-bound: 3 sends in flight. Only worker 0 takes
       // videos, so at most one video (bandwidth + a full temp copy on the gateway)
       // runs at a time; with 1 worker the original order is kept.
-      const queue = files.slice();
       const isVideo = (f) => S.mediaKind(f.name) === "video";
-      const worker = async (w) => {
-        while (!run.cancel) {
-          const i = w === 0 ? 0 : queue.findIndex((f) => !isVideo(f));
-          if (i < 0 || !queue.length) return;
-          const [f] = queue.splice(i, 1);
-          active.push(f.name); show();
-          try {
-            const tags = S.dicomTags(f.study);
-            const sn = S.seriesNumber(f.study, f.name);
-            if (sn) tags.SeriesNumber = sn;
-            await api.pacsSend(sel.value, f.path, tags); ok++;
-          }
-          catch (e) { errors.push(`${f.name}: ${e.message}`); errBox.textContent = errors.join("\n"); }
-          active.splice(active.indexOf(f.name), 1); done += weight(f);
-        }
-      };
-      const cloud = state.pacs.find((p) => p.name === sel.value)?.kind === "cloud";
-      await Promise.all(Array.from({ length: cloud ? 3 : 1 }, (_, w) => worker(w)));
-      clearInterval(tick); bar.value = done / total;
-      prog.textContent = run.cancel ? `Cancelled after ${ok} sent` : `Sent ${ok} of ${files.length}` + (errors.length ? `, ${errors.length} failed` : "");
+      await p.run(files, run, {
+        verb: "Sending", etaAfter: 10,
+        workers: state.pacs.find((s) => s.name === sel.value)?.kind === "cloud" ? 3 : 1,
+        weight: (f) => f.size || 1, // byte-weighted bar (sizes from the listing; 1 per file if unknown)
+        pick: (w, queue) => w === 0 ? 0 : queue.findIndex((f) => !isVideo(f)),
+        each: (f) => {
+          const tags = S.dicomTags(f.study);
+          const sn = S.seriesNumber(f.study, f.name);
+          if (sn) tags.SeriesNumber = sn;
+          return api.pacsSend(sel.value, f.path, tags);
+        },
+      });
+      p.line.textContent = run.cancel ? `Cancelled after ${p.ok} sent` : `Sent ${p.ok} of ${files.length}` + (p.errors.length ? `, ${p.errors.length} failed` : "");
       run.finish();
     });
   }
@@ -1216,22 +1043,17 @@
     const elc = currentStudy.cardEl;
     elc.classList.add("focused");
     if (block !== "none") elc.scrollIntoView({ block });
-    if (!currentStudy.hydrated) {
-      enqueueCard(currentStudy, 1);
-    }
+    if (!currentStudy.hydrated) cards.enqueue(currentStudy, 1);
+  }
+  // stepIndex moves a grid cursor one cell by arrow direction; -1 off the grid.
+  function stepIndex(i, dir, els) {
+    const cols = columnCount(els);
+    const j = i + { left: -1, right: 1, up: -cols, down: cols }[dir];
+    return j >= 0 && j < els.length ? j : -1;
   }
   function moveArchiveFocus(dir) {
-    const vis = visibleStudies();
-    if (!vis.length) return;
-    const cols = columnCount(vis.map((s) => s.cardEl));
-    let i = state.focus;
-    if (dir === "left") i--;
-    else if (dir === "right") i++;
-    else if (dir === "up") i -= cols;
-    else if (dir === "down") i += cols;
-    if (i < 0 || i >= vis.length) return;
-    state.focus = i;
-    updateArchiveFocus();
+    const i = stepIndex(state.focus, dir, visibleStudies().map((s) => s.cardEl));
+    if (i >= 0) { state.focus = i; updateArchiveFocus(); }
   }
 
   // ---- study detail ---------------------------------------------------------
@@ -1290,23 +1112,26 @@
     updateStudyNavButtons();
   }
 
-  function applyTileSize() {
-    $("#media-grid").style.gridTemplateColumns = `repeat(auto-fill, minmax(min(100%, ${state.tileSize}px), ${state.tileSize}px))`;
-  }
-  function zoomTiles(deltaPx) {
-    state.tileSize = Math.max(MIN_TILE_SIZE, Math.min(MAX_TILE_SIZE, state.tileSize + deltaPx));
-    applyTileSize();
-  }
-  function applyCardSize() {
-    $("#grid").style.gridTemplateColumns = `repeat(auto-fill, minmax(min(100%, ${state.cardSize}px), ${state.cardSize}px))`;
-  }
-  function zoomCards(deltaPx) {
-    const wasQuad = state.cardSize >= QUAD_CARD_SIZE;
-    state.cardSize = Math.max(MIN_CARD_SIZE, Math.min(MAX_CARD_SIZE, state.cardSize + deltaPx));
-    applyCardSize();
-    if (wasQuad !== (state.cardSize >= QUAD_CARD_SIZE)) {
-      state.studies.forEach((study) => { if (study.hydrated && study.cardEl) fillCardThumb(study); });
-    }
+  const gridColumns = (px) => `repeat(auto-fill, minmax(min(100%, ${px}px), ${px}px))`;
+  function applyTileSize() { $("#media-grid").style.gridTemplateColumns = gridColumns(state.tileSize); }
+  function applyCardSize() { $("#grid").style.gridTemplateColumns = gridColumns(state.cardSize); }
+  // Ctrl+wheel and two-finger pinch resize a grid's columns: state[key] px,
+  // clamped to min..max; apply(before) shows the new size.
+  function bindGridZoom(grid, view, key, min, max, apply) {
+    let pinch = null;
+    const set = (px) => { const before = state[key]; state[key] = Math.max(min, Math.min(max, Math.round(px))); apply(before); };
+    grid.addEventListener("wheel", (e) => {
+      if (state.view !== view || state.viewer.open || !e.ctrlKey) return;
+      e.preventDefault();
+      set(state[key] + (e.deltaY < 0 ? 24 : -24));
+    }, { passive: false });
+    grid.addEventListener("touchstart", (e) => {
+      if (state.view === view && e.touches.length === 2) pinch = { dist: pinchDist(e.touches), size: state[key] };
+    }, { passive: true });
+    grid.addEventListener("touchmove", (e) => {
+      if (pinch && e.touches.length === 2) set(pinch.size * pinchDist(e.touches) / pinch.dist);
+    }, { passive: true });
+    grid.addEventListener("touchend", () => { pinch = null; });
   }
   function scheduleCardScan() {
     clearTimeout(cardZoomTimer);
@@ -1319,8 +1144,8 @@
     applyTileSize();
     $("#media-empty").hidden = study.media.length > 0;
 
-    mediaQueue.length = 0;
-    setupMediaObservers();
+    tiles.items.length = 0;
+    tiles.observer.disconnect();
 
     study.media.forEach((m, idx) => {
       const tile = el("div", "media-tile");
@@ -1339,8 +1164,7 @@
       const ic = icon(iconName, "ic");
       tile.appendChild(ic);
 
-      const loadPreview = async () => {
-        if (!S.hasPreview(m)) return;
+      m._load = async () => {
         const controller = new AbortController();
         m._previewController = controller;
         previewControllers.set(controller, tile);
@@ -1355,20 +1179,14 @@
           if (S.previewGone(m, err.status)) return;
           if (!controller.signal.aborted) {
             m._previewError = true;
-            previewRetry(tile, err, () => { m._previewError = false; enqueueMedia(tile._queueItem, 1); });
+            previewRetry(tile, err, () => { m._previewError = false; tiles.enqueue(m, 1); });
           }
           throw err;
         } finally { previewControllers.delete(controller); }
       };
 
-      const queueItem = { media: m, tile, loadFn: loadPreview, priority: 1 };
-      tile._queueItem = queueItem;
-
-      if (mediaVisibleObserver) {
-        mediaVisibleObserver.observe(tile);
-      } else {
-        enqueueMedia(queueItem, 1);
-      }
+      tile._item = m;
+      tiles.observer.observe(tile);
 
       if (m.selected) tile.classList.add("selected");
       if (isCopied(m.path)) tile.classList.add("copied");
@@ -1395,23 +1213,13 @@
     if (t) {
       t.classList.add("focused");
       t.scrollIntoView({ block: "nearest" });
-      if (t._queueItem && !t._queueItem.media._previewLoaded) {
-        enqueueMedia(t._queueItem, 1);
-      }
+      tiles.enqueue(currentMedia, 1);
     }
   }
   function moveMediaFocus(dir) {
     const media = state.current ? state.current.media : [];
-    if (!media.length) return;
-    const cols = columnCount(media.map((m) => m.tileEl));
-    let i = state.mediaFocus;
-    if (dir === "left") i--;
-    else if (dir === "right") i++;
-    else if (dir === "up") i -= cols;
-    else if (dir === "down") i += cols;
-    if (i < 0 || i >= media.length) return;
-    state.mediaFocus = i;
-    updateMediaFocus();
+    const i = stepIndex(state.mediaFocus, dir, media.map((m) => m.tileEl));
+    if (i >= 0) { state.mediaFocus = i; updateMediaFocus(); }
   }
 
   function renderInfo(study) {
@@ -1441,7 +1249,7 @@
       for (const [label, val] of rows) panel.appendChild(infoRow(label, val));
     }
 
-    const extra = Object.keys(info).filter((k) => !used.has(k) && !S.KNOWN_KEYS.has(k))
+    const extra = Object.keys(info).filter((k) => !used.has(k))
       .filter((k) => { const v = info[k]; return v !== null && v !== undefined && typeof v !== "object" && String(v) !== ""; });
     if (extra.length) {
       panel.appendChild(el("div", "info-section-title", "Additional"));
@@ -1651,10 +1459,6 @@
     toggleSelectMedia();
     updateViewerSelect();
   }
-  function decodeImg(img, url) {
-    return new Promise((res, rej) => { img.onload = () => res(); img.onerror = rej; img.src = url; });
-  }
-
   async function showMedia() {
     stopCine();
     const m = state.viewer.media[state.viewer.index];
@@ -1722,7 +1526,8 @@
     const img = document.createElement("img");
     img.draggable = false;
     try {
-      await decodeImg(img, url || api.fileURL(m.path)).catch(e => fallbackURL ? decodeImg(img, fallbackURL) : Promise.reject(e));
+      const load = (u) => { img.src = u; return img.decode(); };
+      await load(url || api.fileURL(m.path)).catch(e => fallbackURL ? load(fallbackURL) : Promise.reject(e));
     } catch (e) {
       if (seq !== state.viewer.seq) return;
       const reason = /\.(dcm|dicom)$/i.test(m.name) ? await api.dicomLoadError(m.path) : "";
@@ -1999,7 +1804,6 @@
 
   // ---- boot -----------------------------------------------------------------
   async function boot() {
-    setupThemeBridge();
     await initUser();
     syncDetailStickyOffset();
     const topbar = $(".topbar");
@@ -2052,44 +1856,16 @@
     stage.addEventListener("touchmove", onViewerTouchMove, { passive: false });
     stage.addEventListener("touchend", onViewerTouchEnd, { passive: true });
 
-    // Study detail: wheel / pinch resizes the preview tiles.
-    const grid = $("#grid");
-    grid.addEventListener("wheel", (e) => {
-      if (state.view !== "archive" || !e.ctrlKey) return;
-      e.preventDefault();
-      zoomCards(e.deltaY < 0 ? 24 : -24);
-      scheduleCardScan();
-    }, { passive: false });
-    grid.addEventListener("touchstart", (e) => {
-      if (state.view !== "archive" || e.touches.length !== 2) return;
-      state.cardPinch = { dist: pinchDist(e.touches), size: state.cardSize };
-    }, { passive: true });
-    grid.addEventListener("touchmove", (e) => {
-      if (!state.cardPinch || e.touches.length !== 2) return;
-      const ratio = pinchDist(e.touches) / state.cardPinch.dist;
-      state.cardSize = Math.max(MIN_CARD_SIZE, Math.min(MAX_CARD_SIZE, Math.round(state.cardPinch.size * ratio)));
+    // Archive cards and study tiles: Ctrl+wheel / pinch resizes them.
+    bindGridZoom($("#grid"), "archive", "cardSize", MIN_CARD_SIZE, MAX_CARD_SIZE, (before) => {
       applyCardSize();
-    }, { passive: true });
-    grid.addEventListener("touchend", () => { state.cardPinch = null; scheduleCardScan(); });
-
-    const mgrid = $("#media-grid");
-    mgrid.addEventListener("wheel", (e) => {
-      if (state.view !== "study" || state.viewer.open) return;
-      if (!e.ctrlKey) return;
-      e.preventDefault();
-      zoomTiles(e.deltaY < 0 ? 24 : -24);
-    }, { passive: false });
-    mgrid.addEventListener("touchstart", (e) => {
-      if (state.view !== "study" || e.touches.length !== 2) return;
-      state.pinch = { dist: pinchDist(e.touches), size: state.tileSize };
-    }, { passive: true });
-    mgrid.addEventListener("touchmove", (e) => {
-      if (!state.pinch || e.touches.length !== 2) return;
-      const ratio = pinchDist(e.touches) / state.pinch.dist;
-      state.tileSize = Math.max(MIN_TILE_SIZE, Math.min(MAX_TILE_SIZE, Math.round(state.pinch.size * ratio)));
-      applyTileSize();
-    }, { passive: true });
-    mgrid.addEventListener("touchend", () => { state.pinch = null; });
+      // Crossing the quad size swaps one preview for four, or back.
+      if ((before >= QUAD_CARD_SIZE) !== (state.cardSize >= QUAD_CARD_SIZE)) {
+        state.studies.forEach((study) => { if (study.hydrated && study.cardEl) fillCardThumb(study); });
+      }
+      scheduleCardScan();
+    });
+    bindGridZoom($("#media-grid"), "study", "tileSize", MIN_TILE_SIZE, MAX_TILE_SIZE, applyTileSize);
 
     // Re-flow the focus cursor and scheduler when the grid wraps to a new column count.
     window.addEventListener("resize", () => {

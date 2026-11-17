@@ -13,16 +13,19 @@ const d = new Date();
 const pad = (n) => String(n).padStart(2, "0");
 const ver = `1.0.${String(d.getFullYear()).slice(2)}${pad(d.getMonth() + 1)}${pad(d.getDate())}`;
 
-for (const name of ["package.json", "omnigate.json"]) {
-  const file = path.join(ROOT_DIR, name);
-  const json = JSON.parse(fs.readFileSync(file, "utf8"));
-  json.version = ver;
-  fs.writeFileSync(file, JSON.stringify(json, null, 2) + "\n");
-}
+// Read and validate every input before writing any, so a failed build bumps nothing.
 const htmlPath = path.join(ROOT_DIR, "index.html");
 const VERSION_RE = /(<span class="app-version[^>]*>)([^<]*)(<\/span>)/;
 const html = fs.readFileSync(htmlPath, "utf8");
 if (!VERSION_RE.test(html)) { console.error("[build] index.html has no app-version span"); process.exit(1); }
+const jsons = ["package.json", "omnigate.json"].map((name) => {
+  const file = path.join(ROOT_DIR, name);
+  return { file, json: JSON.parse(fs.readFileSync(file, "utf8")) };
+});
+for (const { file, json } of jsons) {
+  json.version = ver;
+  fs.writeFileSync(file, JSON.stringify(json, null, 2) + "\n");
+}
 fs.writeFileSync(htmlPath, html.replace(VERSION_RE, `$1${ver}$3`));
 console.log(`[build] Version: ${ver}`);
 

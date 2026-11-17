@@ -81,6 +81,11 @@ assert.strictEqual(S.browserPoster({ info: {} }, { kind: "image" }, 415), false)
   assert.deepStrictEqual(F({ from: "2026-11-01", ModalitiesInStudy: "ES" }), { filter: { ModalitiesInStudy: "ES", StudyDate: "20261101-20261110" } });
   assert.deepStrictEqual(F({ to: "2020-01-31" }), { filter: { StudyDate: "19000101-20200131" } });
   assert.ok(F({ from: "2026-11-10", to: "2026-11-01" }).error);
+  assert.ok(F({ from: "2024-1-5" }).error, "malformed date refused, not sent as 202415");
+  // Unquoted worklist values: numeric date, zero-led time, still DICOM strings.
+  const wl = S.dicomTags({ folderName: "x", info: MVR.yaml.parse("WlStudyDate: 20240101\nWlStudyTime: 083000\n") });
+  assert.strictEqual(wl.StudyDate, "20240101");
+  assert.strictEqual(wl.StudyTime, "083000");
   // Modality or description alone would pull the whole store.
   assert.ok(F({ ModalitiesInStudy: "ES" }).error);
   assert.ok(F({ StudyDescription: "colon" }).error);

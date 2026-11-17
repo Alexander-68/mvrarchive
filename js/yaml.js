@@ -22,7 +22,11 @@
       else s = s.replace(/''/g, "'");
       return s;
     }
-    if (/^-?\d+$/.test(s)) return parseInt(s, 10);
+    // IDs like 0012345 keep their zeros, and huge ints their digits: stay strings.
+    if (/^-?\d+$/.test(s)) {
+      const n = parseInt(s, 10);
+      return /^-?0\d/.test(s) || !Number.isSafeInteger(n) ? s : n;
+    }
     if (/^-?\d+\.\d+$/.test(s)) return parseFloat(s);
     if (s === "true") return true;
     if (s === "false") return false;

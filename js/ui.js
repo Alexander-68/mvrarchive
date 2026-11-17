@@ -180,7 +180,7 @@
       try {
         if (!s.hydrated) await S.hydrate(s);
         await fillCard(s);
-        if (state.query) applySearch();
+        if (state.query) scheduleApplySearch();
         scheduleResort();
       } catch (e) {
         s._thumbError = true;
@@ -442,7 +442,12 @@
 
   // ---- ordering -------------------------------------------------------------
   const byDate = (a, b) => (S.studyDate(b) || 0) - (S.studyDate(a) || 0);
-  let resortTimer = null;
+  let resortTimer = null, searchTimer = null;
+  // Background hydration during a search refilters at most every 150 ms, not per card
+  // (throttled, not debounced: a long backfill must not hold matches back).
+  function scheduleApplySearch() {
+    if (!searchTimer) searchTimer = setTimeout(() => { searchTimer = null; if (state.query) applySearch(); }, 150);
+  }
   function scheduleResort() {
     clearTimeout(resortTimer);
     resortTimer = setTimeout(resortCards, 300);
@@ -666,6 +671,7 @@
 
   // ---- search ---------------------------------------------------------------
   function applySearch() {
+    clearTimeout(searchTimer); searchTimer = null; // this run covers any pending throttled one
     const q = state.query;
     let visible = 0;
     for (const study of state.studies) {
@@ -791,7 +797,7 @@
       // study (a whole-study server copy is one silent request). Existing
       // targets are refused, as the server copy would (409).
       const dirs = [], files = [];
-      const taken = new Set((await api.list(dest).catch(() => [])).map((e) => e.name.toLowerCase()));
+      const taken = new Set((await api.list(dest)).map((e) => e.name.toLowerCase()));
       const walk = async (src, dst) => {
         dirs.push(dst);
         for (const e of await api.list(src)) {
@@ -836,7 +842,15 @@
     ok.textContent = okLabel; ok.className = okClass; ok.hidden = false; ok.disabled = false;
     cancel.textContent = "Cancel";
     const run = { cancel: false, finish() { ok.hidden = true; cancel.textContent = "Close"; } };
-    ok.onclick = () => { ok.disabled = true; onOk(run); };
+    ok.onclick = async () => {
+      ok.disabled = true;
+      try { await onOk(run); }
+      catch (e) { // toasts sit behind an open modal's top layer: report in the dialog
+        if (dlg.open) bodyEl.appendChild(el("div", "errors", e.message || String(e)));
+        else toast(e.message || String(e), true);
+        run.finish();
+      }
+    };
     dlg.onclose = () => { run.cancel = true; };
     dlg.showModal();
     return run;
@@ -892,8 +906,16 @@
     return p;
   }
 
+  // False (after a toast) when a study could not be read: delete would show a
+  // wrong count and send would silently skip its files.
   async function hydrateAll(items) {
-    await Promise.all(items.map((it) => it.study.hydrated ? null : S.hydrate(it.study).then(() => fillCard(it.study))));
+    try {
+      await Promise.all(items.map((it) => it.study.hydrated ? null : S.hydrate(it.study).then(() => fillCard(it.study))));
+      return true;
+    } catch (e) {
+      toast("Could not read study: " + e.message, true);
+      return false;
+    }
   }
   // After files or studies vanish, reload what showed them.
   async function reloadAfter(kind, items) {
@@ -901,12 +923,18 @@
     const touched = new Set(items.map((it) => it.study));
     if (state.current && touched.has(state.current)) {
       state.current.hydrated = false;
+      let readable = true;
       try {
         await S.hydrate(state.current);
       } catch (e) {
-        state.current.media = [];
+        readable = false; // keep the study: unreadable is not empty
+        toast("Could not reload study: " + e.message, true);
+        // Still drop what was just deleted, so the view doesn't show it as present.
+        const gone = new Set(items.map((it) => it.path));
+        state.current.media = state.current.media.filter((m) => !gone.has(m.path));
+        renderMedia(state.current);
       }
-      if (!state.current.media.length && (api.searchable.has(state.root) || api.isPermanent(state.root))) {
+      if (readable && !state.current.media.length && (api.searchable.has(state.root) || api.isPermanent(state.root))) {
         if (state.viewer.open) closeViewer();
         state.studies = state.studies.filter((s) => s !== state.current);
         state.current = null;
@@ -914,9 +942,11 @@
         loadArchive(state.root);
         return;
       }
-      openStudy(state.current);
-      fillCard(state.current);
-      scheduleResort();
+      if (readable) {
+        openStudy(state.current);
+        fillCard(state.current);
+        scheduleResort();
+      }
     }
     for (const st of touched) {
       if (st === state.current) continue;
@@ -953,7 +983,7 @@
     const permanent = api.isPermanent(state.root);
     const body = el("div");
     if (kind === "study") {
-      await hydrateAll(items);
+      if (!(await hydrateAll(items))) return;
       const files = items.reduce((n, it) => n + it.study.media.length, 0);
       body.appendChild(el("div", null, `${plural(items.length, "folder")}, ${plural(files, "file")}`));
     } else {
@@ -980,7 +1010,7 @@
     if (state.deleted) return;
     const { kind, items } = selectedItems();
     if (!items.length || !state.pacs.length) return;
-    if (kind === "study") await hydrateAll(items);
+    if (kind === "study" && !(await hydrateAll(items))) return;
     const all = kind === "study"
       ? items.flatMap((it) => it.study.media.map((m) => ({ path: m.path, name: m.name, size: m.size, study: it.study })))
       : items;
@@ -1094,6 +1124,7 @@
       // Fill the card too: the lazy scheduler skips hydrated studies, so a card
       // hydrated here (Prev/Next into an unseen study) would otherwise stay blank.
       try { await S.hydrate(study); fillCard(study); scheduleResort(); } catch (e) { toast(e.message, true); }
+      if (state.current !== study || state.view !== "study") return; // superseded while loading
     }
     const c = study.counters;
     const bits = [];
@@ -1386,19 +1417,30 @@
   }
 
   // ---- media viewer (zoom / pan / swipe) ------------------------------------
+  // The viewer covers the app: what is behind it is inert while it is open,
+  // focus moves into it and returns on close.
+  const setBackdropInert = (on) => { for (const e of document.querySelectorAll("body > header, body > main, body > section")) e.inert = on; };
   function openViewer(study, index) {
+    if (!state.viewer.open) {
+      state.viewer.returnFocus = document.activeElement;
+      setBackdropInert(true);
+    }
     state.viewer.study = study;
     state.viewer.media = study.media;
     state.viewer.index = index;
     state.viewer.open = true;
     resetZoomVars();           // fresh open starts unzoomed
     $("#viewer").hidden = false;
+    $("#viewer").focus();
     showMedia();
   }
   function closeViewer() {
     stopCine();
     state.viewer.open = false;
     $("#viewer").hidden = true;
+    setBackdropInert(false);
+    state.viewer.returnFocus?.focus?.({ preventScroll: true });
+    state.viewer.returnFocus = null;
     clearStage();
     // keep detail focus in sync with where we were
     setMediaFocus(state.viewer.index);
@@ -1622,7 +1664,7 @@
   function onKeydown(e) {
     // Don't hijack typing in the search box (except Esc to clear it).
     if (!state.viewer.open && e.target && e.target.tagName === "INPUT") {
-      if (e.key === "Escape") { e.target.value = ""; state.query = ""; applySearch(); e.target.blur(); }
+      if (e.key === "Escape" && e.target.id === "search") { e.target.value = ""; state.query = ""; applySearch(); e.target.blur(); }
       return;
     }
 

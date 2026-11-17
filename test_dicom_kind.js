@@ -22,9 +22,10 @@ vm.runInNewContext(fs.readFileSync(__dirname + "/js/api.js", "utf8"), {
     [Error("offline"), "image"],
   ]) {
     response = res;
+    request = undefined;
     assert.equal(await MVR.api.dicomPayloadKind("/DATA/scan42.dcm"), want);
+    assert.equal(request?.url, "api/files/payload?path=%2FDATA%2Fscan42.dcm", "probe sent");
+    assert.equal(request.opts.headers.Range, "bytes=0-0", "probe asks for one byte only");
   }
-  assert.equal(request.url, "api/files/payload?path=%2FDATA%2Fscan42.dcm");
-  assert.equal(request.opts.headers.Range, "bytes=0-0", "probe asks for one byte only");
   console.log("test_dicom_kind: ok");
 })().catch(err => { console.error(err); process.exit(1); });

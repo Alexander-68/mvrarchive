@@ -112,13 +112,14 @@
         const text = await api.readText(path.join(studyPath, yaml));
         const obj = MVR.yaml.parse(text);
         if (obj && Object.keys(obj).length) return obj;
-      } catch (e) { /* fall through */ }
+      } catch (e) { console.warn(`${yaml} unreadable:`, studyPath, e); }
     }
     if (names.has("patient_info.json")) {
       try {
         const text = await api.readText(path.join(studyPath, "patient_info.json"));
-        return JSON.parse(text);
-      } catch (e) { /* ignore */ }
+        const obj = JSON.parse(text);
+        if (obj && typeof obj === "object" && !Array.isArray(obj)) return obj; // callers read info.X
+      } catch (e) { console.warn("patient_info.json unreadable:", studyPath, e); }
     }
     return null;
   }
@@ -144,13 +145,15 @@
       else if (kind === "pdf") pdfs++;
       media.push({ name, kind, size: e.size, path: path.join(study.path, e.name), deletedAt: e.deleted_at ? Date.parse(e.deleted_at) : 0 });
     }
-    // A live study in deleted mode reports its most recent file deletion.
-    if (!study.trashed) study.deletedAt = media.reduce((t, m) => Math.max(t, m.deletedAt || 0), 0);
     media.sort((a, b) => a.name.localeCompare(b.name));
+    const info = await loadInfo(study.path, entries);
+    // Assign after the last await so overlapping hydrates never leave mixed state.
     study.media = media;
     study.counters = { images, videos, pdfs, size };
     study.thumbFile = media.find((m) => m.kind === "image") || null;
-    study.info = await loadInfo(study.path, entries);
+    study.info = info;
+    // A live study in deleted mode reports its most recent file deletion.
+    if (!study.trashed) study.deletedAt = media.reduce((t, m) => Math.max(t, m.deletedAt || 0), 0);
     study.hydrated = true;
     return study;
   }
@@ -296,8 +299,9 @@
       t.StudyDate = `${d.getFullYear()}${pad2(d.getMonth() + 1)}${pad2(d.getDate())}`;
       t.StudyTime = `${pad2(d.getHours())}${pad2(d.getMinutes())}${pad2(d.getSeconds())}`;
     }
-    if (/^\d{8}$/.test(i.WlStudyDate || "")) t.StudyDate = i.WlStudyDate;
-    if (/^\d{6}/.test(i.WlStudyTime || "")) t.StudyTime = i.WlStudyTime;
+    const wlDate = String(i.WlStudyDate ?? ""), wlTime = String(i.WlStudyTime ?? ""); // YAML may give numbers
+    if (/^\d{8}$/.test(wlDate)) t.StudyDate = wlDate;
+    if (/^\d{6}/.test(wlTime)) t.StudyTime = wlTime;
     // DICOM tag <- metadata key; the first key with a value wins.
     const map = {
       AccessionNumber: ["AccessionNumber"],
@@ -395,6 +399,7 @@
     const from = String(form.from || "").replaceAll("-", ""), to = String(form.to || "").replaceAll("-", "");
     if (from || to) {
       const lo = from || "19000101", hi = to || ymd(now);
+      if (!/^\d{8}$/.test(lo) || !/^\d{8}$/.test(hi)) return { error: "Enter dates as YYYY-MM-DD." };
       if (lo > hi) return { error: "The start date is after the end date." };
       f.StudyDate = `${lo}-${hi}`;
     }

@@ -15,7 +15,7 @@
       try {
         const data = await window.MVR.api.dicomFrames(path, controller.signal);
         if (controller.signal.aborted) return;
-        if (data.frames.length < 2) { bar.hidden = true; return; }
+        if (!Array.isArray(data?.frames) || data.frames.length < 2) { bar.hidden = true; return; }
         for (const frame of data.frames) {
           const bytes = Uint8Array.from(atob(frame), (c) => c.charCodeAt(0));
           urls.push(URL.createObjectURL(new Blob([bytes], { type: "image/jpeg" })));

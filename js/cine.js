@@ -2,7 +2,7 @@
 // viewer; compressed JPEG URLs are released on close or file navigation.
 (function () {
   "use strict";
-  window.MVR.cine = { open };
+  window.MVR.cine = { open, video };
 
   function open(path, bar, showFrame) {
     const controller = new AbortController();
@@ -96,6 +96,61 @@
       bar.hidden = true;
       bar.textContent = "";
       bar.onkeydown = null;
+    };
+  }
+
+  // video adds frame stepping beside a native <video>'s own controls. HTML video
+  // exposes no frame rate, so it is measured from requestVideoFrameCallback
+  // (smallest mediaTime delta seen), else assumed 30 fps. After pause() Chrome's
+  // currentTime trails the frame on screen, so stepping counts from the
+  // presented frame's mediaTime; seeks land mid-frame so rounding never repeats
+  // or skips a frame.
+  function video(v, bar) {
+    const controller = new AbortController();
+    let dt = 1 / 30, measured = false, presented = null;
+    bar.hidden = false;
+    bar.innerHTML = '<button type="button" class="ghost" aria-label="Previous frame" title="Previous frame (Arrow Up)"><strong class="cine-arrow" aria-hidden="true">↑</strong> Prev</button>' +
+      '<span class="cine-counter"></span>' +
+      '<button type="button" class="ghost" aria-label="Next frame" title="Next frame (Arrow Down)">Next <strong class="cine-arrow" aria-hidden="true">↓</strong></button>';
+    const [prev, counter, next] = bar.children;
+    const frame = () => presented === null ? Math.floor(v.currentTime / dt + 0.01) : Math.round(presented / dt);
+    const show = () => {
+      const total = Math.round(v.duration / dt);
+      counter.textContent = Number.isFinite(total) && total > 0 ? `Frame ${Math.min(frame() + 1, total)} / ${total}` : "";
+    };
+    const measure = (now, md) => {
+      if (controller.signal.aborted) return;
+      // Only consecutive presented frames are compared: seeks clear `presented`.
+      const d = presented === null ? 0 : md.mediaTime - presented;
+      if (d > 0.001 && (!measured || d < dt)) { dt = d; measured = true; }
+      presented = md.mediaTime;
+      show();
+      v.requestVideoFrameCallback(measure);
+    };
+    if (v.requestVideoFrameCallback) v.requestVideoFrameCallback(measure);
+    const stepFrame = delta => {
+      v.pause();
+      const max = Math.max(0, Math.round(v.duration / dt) - 1) || 0;
+      v.currentTime = (Math.min(max, Math.max(0, frame() + delta)) + 0.5) * dt;
+      presented = null; // "seeking" fires async; a quick second step must count from the target
+      show();
+    };
+    prev.onclick = () => stepFrame(-1);
+    next.onclick = () => stepFrame(1);
+    v.addEventListener("seeking", () => { presented = null; }, { signal: controller.signal });
+    for (const type of ["loadedmetadata", "timeupdate", "seeked", "pause"]) v.addEventListener(type, show, { signal: controller.signal });
+    document.addEventListener("keydown", e => {
+      if (e.defaultPrevented || document.querySelector("dialog[open]") || (e.key !== "ArrowUp" && e.key !== "ArrowDown") ||
+        /^(INPUT|SELECT|TEXTAREA)$/.test(e.target?.tagName)) return;
+      e.preventDefault();
+      if (!v.paused) v.pause();
+      else stepFrame(e.key === "ArrowUp" ? -1 : 1);
+    }, { signal: controller.signal });
+    show();
+    return () => {
+      controller.abort();
+      bar.hidden = true;
+      bar.textContent = "";
     };
   }
 })();
